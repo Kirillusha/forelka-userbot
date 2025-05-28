@@ -29,7 +29,8 @@ Forelka Userbot — это пользовательский бот, которы
 
 1. Клонируйте репозиторий:
 
-git clone https://github.com/kirillusha/forelka-userbot.git
+``git clone https://github.com/kirillusha/forelka-userbot.git
+
 cd forelka-userbot
 
 
