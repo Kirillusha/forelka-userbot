@@ -2,7 +2,6 @@ import configparser
 import sys
 import logging
 import importlib
-from pyrogram.idle import idle
 from pyrogram import Client, filters
 from pyrogram.types import Message
 from utils import get_command_from_message
@@ -75,16 +74,17 @@ async def handler(client: Client, message: Message):
 
 def print_banner():
     banner = r"""
- ______   _______  ______   _______  __   __  __   __ 
-|      | |       ||      | |       ||  |_|  ||  |_|  |
-|  _    ||   _   ||  _    ||   _   ||       ||       |
-| | |   ||  | |  || | |   ||  | |  ||       ||       |
-| |_|   ||  |_|  || |_|   ||  |_|  ||       ||       |
-|       ||       ||       ||       || ||_|| || ||_|| |
-|______| |_______||______| |_______||_|   |_||_|   |_|
+    _     _           
+|      | |             | |         |_|  ||  |_|  |
+|  _       _     _       _          ||       |
+| | |     | |   | |     | |         ||       |
+| |_|     |_|   |_|     |_|         ||       |
+|                             _  _|| |
+ |_|       |_|
                                                          
 """
     print(banner)
+
 
 
 if __name__ == "__main__":
