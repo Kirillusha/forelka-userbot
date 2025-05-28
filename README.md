@@ -28,12 +28,13 @@ Forelka Userbot — это пользовательский бот, которы
 ▌🛠 Установка
 
 1. Клонируйте репозиторий:
-git clone https://github.com/kirillusha/forelka-userbot.git
-cd forelka-userbot
+
+```git clone https://github.com/kirillusha/forelka-userbot.git
+cd forelka-userbot```
 
 
 2. Установите зависимости:
-pip install -r requirements.txt
+```pip install -r requirements.txt```
 
 
 3. Создайте файл config.ini в корне проекта и заполните его:
@@ -49,7 +50,7 @@ owner_id = YOUR_TELEGRAM_ID
 - owner_id — ваш Telegram ID (число)
 
 4. Запустите юзербот:
-python main.py
+```python main.py```
 
 
 ---
