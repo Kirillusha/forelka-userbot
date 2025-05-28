@@ -38,16 +38,9 @@ cd forelka-userbot
 pip install -r requirements.txt
 
 
-3. Создайте файл config.ini в корне проекта и заполните его:
-[pyrogram]
-api_id = YOUR_API_ID
-api_hash = YOUR_API_HASH
-session_name = your_session_name
-command_prefix = /
-owner_id = YOUR_TELEGRAM_ID
-
-
-- api_id и api_hash можно получить на https://my.telegram.org
+3. Заполните файл config.ini в корне проекта
+  
+   - api_id и api_hash можно получить на https://my.telegram.org
 - owner_id — ваш Telegram ID (число)
 
 4. Запустите юзербот:
