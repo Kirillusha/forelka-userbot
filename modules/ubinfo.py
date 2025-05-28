@@ -5,7 +5,7 @@ async def forelka_cmd(client, message: Message, args):
     text = (
         "💙Userbot Forelka started!\n\n"
         "Channel: https://t.me/forelkauserbots\n"
-        "Modules: soon\n"
+        "Modules: https://t.me/forelkausermodules\n"
         "Support: https://t.me/forelusersupport"
     )
     try:
