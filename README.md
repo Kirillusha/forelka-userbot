@@ -54,6 +54,8 @@ owner_id = YOUR_TELEGRAM_ID
 python main.py
 
 
+
+(инлайн бот подключается отдельно, python inline_bot.py) 
 ---
 
 ▌⚙ Использование
