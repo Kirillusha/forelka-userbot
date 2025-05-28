@@ -29,7 +29,7 @@ Forelka Userbot — это пользовательский бот, которы
 
 1. Клонируйте репозиторий:
 
-``git clone https://github.com/kirillusha/forelka-userbot.git
+git clone https://github.com/kirillusha/forelka-userbot.git
 
 cd forelka-userbot
 
@@ -51,7 +51,7 @@ owner_id = YOUR_TELEGRAM_ID
 - owner_id — ваш Telegram ID (число)
 
 4. Запустите юзербот:
-python main.py```
+python main.py
 
 
 ---
