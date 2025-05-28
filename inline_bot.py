@@ -3,7 +3,7 @@ from telebot.types import InlineQueryResultArticle, InputTextMessageContent, Inl
 import os
 import time
 
-TOKEN = "7696280451:AAFA70tdSTfOXpdS97v8PIkcOqRhWeIvbLg"
+TOKEN = "токен вашего бота"
 LOG_FILE = 'forelka.log'
 
 bot = telebot.TeleBot(TOKEN)
