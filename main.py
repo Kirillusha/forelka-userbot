@@ -2,6 +2,7 @@ import configparser
 import sys
 import logging
 import importlib
+from pyrogram.idle import idle
 from pyrogram import Client, filters
 from pyrogram.types import Message
 from utils import get_command_from_message
