@@ -1,3 +1,4 @@
+#создание бд
 import sqlite3
 import threading
 
