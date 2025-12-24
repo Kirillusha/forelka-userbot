@@ -1,5 +1,6 @@
 import asyncio
 import os
+import sys
 from pyrogram import Client, idle, filters, utils
 from pyrogram.handlers import MessageHandler
 import loader
@@ -38,24 +39,30 @@ def patch_pyrogram():
 async def dispatch_command(client, message):
     if not message.text or not message.text.startswith("."):
         return
+    
     parts = message.text.split(maxsplit=1)
     cmd_name = parts[0][1:].lower()
     args = parts[1].split() if len(parts) > 1 else []
+    
     if cmd_name in client.commands:
         try:
             await client.commands[cmd_name]["func"](client, message, args)
-        except Exception:
-            pass
+        except Exception as e:
+            print(f"Error in {cmd_name}: {e}")
+            await message.edit(f"**Error:** `{e}`")
 
 async def main():
     patch_pyrogram()
+    
     session = next((f[:-8] for f in os.listdir() if f.startswith("forelka-") and f.endswith(".session")), None)
     if not session:
+        print("Session not found. Please implement auth or place session file.")
         return
     
     client = Client(session)
     client.commands = {}
     client.loaded_modules = set()
+    
     client.add_handler(MessageHandler(dispatch_command, filters.me & filters.text))
     
     loader.load_all_modules(client)
