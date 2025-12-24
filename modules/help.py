@@ -1,34 +1,17 @@
-from pyrogram.types import Message
-from pyrogram.enums import ParseMode
-
-async def help_cmd(client, message: Message, args):
-    commands = client._commands
-    prefix = client.prefix
+async def help_cmd(client, message, args):
+    prefix = getattr(client, "prefix", ".")
     modules = {}
-    for cmd_name, info in commands.items():
+    
+    for cmd_name, info in client.commands.items():
         mod = info.get("module", "unknown")
         modules.setdefault(mod, []).append(cmd_name)
 
-    text_lines = []
-    text_lines.append(f"🪐 {len(modules)} модулей доступно:\n")
-    
-    # Формируем построчно модули с командами в скобках
+    text = [f"Modules: {len(modules)}\n"]
     for mod, cmds in sorted(modules.items()):
-        cmds_sorted = sorted(cmds)
-        cmds_str = " | ".join([f"{prefix}{cmd}" for cmd in cmds_sorted])
-        text_lines.append(f"▪️ {mod}: ( {cmds_str} )")
-    
-    text = "\n".join(text_lines)
+        cmds_str = " | ".join([f"{prefix}{c}" for c in sorted(cmds)])
+        text.append(f"{mod}: ( {cmds_str} )")
 
-    try:
-        await message.edit_text(text, parse_mode=ParseMode.HTML)
-    except Exception:
-        await message.reply(text, parse_mode=ParseMode.HTML)
+    await message.edit("\n".join(text))
 
-def register(app, commands, prefix, module_name):
-    commands["help"] = {
-        "func": help_cmd,
-        "desc": "Показать это сообщение помощи",
-        "module": module_name
-    }
-    app._commands = commands
+def register(app, commands, module_name):
+    commands["help"] = {"func": help_cmd, "module": module_name}
