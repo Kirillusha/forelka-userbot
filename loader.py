@@ -5,11 +5,14 @@ import sys
 
 loaded_modules = {}
 
-def load_module(app, commands, prefix, module_name, file_path=None):
+MODULE_DIRS = ["modules", "loaded_modules"]
+
+def load_module(app, commands, module_name, folder="modules"):
     try:
-        if file_path is None:
-            file_path = f"modules/{module_name}.py"
-        
+        file_path = os.path.join(folder, f"{module_name}.py")
+        if not os.path.exists(file_path):
+            return False
+
         if module_name in loaded_modules:
             module = importlib.reload(loaded_modules[module_name])
         else:
@@ -17,29 +20,40 @@ def load_module(app, commands, prefix, module_name, file_path=None):
             module = importlib.util.module_from_spec(spec)
             sys.modules[module_name] = module
             spec.loader.exec_module(module)
-        
+
         if hasattr(module, "register"):
-            module.register(app, commands, prefix, module_name)
+            module.register(app, commands, module_name)
             loaded_modules[module_name] = module
             return True
     except Exception as e:
-        print(e)
+        print(f"Error loading {module_name}: {e}")
     return False
 
-def load_modules(app, commands, prefix):
-    if not os.path.exists("modules"):
-        os.makedirs("modules")
-        return {}
-    
-    for file in os.listdir("modules"):
-        if file.endswith(".py"):
-            module_name = file[:-3]
-            load_module(app, commands, prefix, module_name)
-    
-    return loaded_modules
+def load_all_modules(app, commands):
+    for folder in MODULE_DIRS:
+        if not os.path.exists(folder):
+            os.makedirs(folder)
+            continue
+        for f in os.listdir(folder):
+            if f.endswith(".py") and not f.startswith("_"):
+                module_name = f[:-3]
+                load_module(app, commands, module_name, folder)
 
-def unload_module(module_name):
+def unload_module(app, commands, module_name):
+    to_remove = [cmd for cmd, info in commands.items() if info.get("module") == module_name]
+    for cmd in to_remove:
+        del commands[cmd]
+
     if module_name in loaded_modules:
         del loaded_modules[module_name]
     if module_name in sys.modules:
         del sys.modules[module_name]
+
+def reload_module(app, commands, module_name, folder="modules"):
+    unload_module(app, commands, module_name)
+    return load_module(app, commands, module_name, folder)
+
+def reload_all(app, commands):
+    for module_name in list(loaded_modules.keys()):
+        unload_module(app, commands, module_name)
+    load_all_modules(app, commands)
