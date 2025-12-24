@@ -2,15 +2,40 @@ import importlib
 import importlib.util
 import os
 import sys
+import inspect
 
 MODULE_DIRS = ["modules", "loaded_modules"]
+
+async def help_cmd(client, message, args):
+    text = (
+        f"**Forelka UB**\n"
+        f"**Modules:** `{len(client.loaded_modules)}`\n"
+        f"**Commands:** `{len(client.commands)}`\n\n"
+        f"**List:**\n`" + "`, `".join(sorted(client.commands.keys())) + "`"
+    )
+    await message.edit(text)
+
+async def reload_cmd(client, message, args):
+    if not args:
+        reload_all(client)
+        await message.edit("`All modules reloaded`")
+    else:
+        module_name = args[0]
+        if reload_module(client, module_name):
+            await message.edit(f"`Module {module_name} reloaded`")
+        else:
+            await message.edit(f"`Module {module_name} not found`")
+
+def register_system(app):
+    app.commands["help"] = {"func": help_cmd, "desc": "System help", "module": "system"}
+    app.commands["reload"] = {"func": reload_cmd, "desc": "Reload logic", "module": "system"}
+    app.loaded_modules.add("system")
 
 def load_module(app, module_name, folder):
     file_path = os.path.join(folder, f"{module_name}.py")
     if not os.path.exists(file_path):
         return False
     try:
-        # Hot-reload logic
         if module_name in sys.modules:
             module = importlib.reload(sys.modules[module_name])
         else:
@@ -20,48 +45,48 @@ def load_module(app, module_name, folder):
             spec.loader.exec_module(module)
 
         if hasattr(module, "register"):
-            # Согласно структуре: register(client, commands, module_name)
-            module.register(app, app.commands, module_name)
+            sig = inspect.signature(module.register)
+            params = len(sig.parameters)
+            if params == 3:
+                module.register(app, app.commands, module_name)
+            elif params == 2:
+                module.register(app, app.commands)
+            else:
+                module.register(app)
             app.loaded_modules.add(module_name)
-            print(f"[LOADER] Success: {module_name} from {folder}/")
             return True
-    except Exception as e:
-        print(f"[LOADER] Failed {module_name} from {folder}: {e}")
+    except Exception:
         return False
     return False
 
 def unload_module(app, module_name):
-    cmds_to_del = [cmd for cmd, info in app.commands.items() if info.get("module") == module_name]
-    for cmd in cmds_to_del:
+    to_del = [cmd for cmd, info in app.commands.items() if info.get("module") == module_name]
+    for cmd in to_del:
         del app.commands[cmd]
     if module_name in sys.modules:
         del sys.modules[module_name]
     app.loaded_modules.discard(module_name)
 
 def reload_module(app, module_name):
-    folder = "modules"
-    for d in MODULE_DIRS:
-        if os.path.exists(os.path.join(d, f"{module_name}.py")):
-            folder = d
-            break
+    if module_name == "system":
+        register_system(app)
+        return True
+    folder = next((d for d in MODULE_DIRS if os.path.exists(os.path.join(d, f"{module_name}.py"))), "modules")
     unload_module(app, module_name)
     return load_module(app, module_name, folder)
 
 def load_all_modules(app):
-    print(f"[LOADER] Scanning directories: {MODULE_DIRS}")
+    register_system(app)
     for folder in MODULE_DIRS:
         if not os.path.exists(folder):
             os.makedirs(folder)
-            print(f"[LOADER] Created directory: {folder}")
-            continue
-        
-        files = [f for f in os.listdir(folder) if f.endswith(".py") and not f.startswith("_")]
-        print(f"[LOADER] Found in {folder}: {files}")
-        
-        for f in files:
-            load_module(app, f[:-3], folder)
+        for f in os.listdir(folder):
+            if f.endswith(".py") and not f.startswith("_"):
+                load_module(app, f[:-3], folder)
 
 def reload_all(app):
-    for m in list(app.loaded_modules):
-        unload_module(app, m)
+    current = list(app.loaded_modules)
+    for m in current:
+        if m != "system":
+            unload_module(app, m)
     load_all_modules(app)
