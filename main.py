@@ -3,7 +3,6 @@ import os
 import sys
 import subprocess
 from pyrogram import Client, filters, idle
-import import import loaded_modules
 
 def get_git_commit():
     try:
