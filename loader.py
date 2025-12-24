@@ -6,13 +6,9 @@ import sys
 MODULE_DIRS = ["modules", "loaded_modules"]
 
 def load_module(app, module_name, folder):
-    if not os.path.exists(folder):
-        os.makedirs(folder)
-    
     file_path = os.path.join(folder, f"{module_name}.py")
     if not os.path.exists(file_path):
         return False
-
     try:
         if module_name in sys.modules:
             module = importlib.reload(sys.modules[module_name])
@@ -31,14 +27,12 @@ def load_module(app, module_name, folder):
     return False
 
 def unload_module(app, module_name):
-    to_remove = [cmd for cmd, info in app.commands.items() if info.get("module") == module_name]
-    for cmd in to_remove:
+    cmds_to_del = [cmd for cmd, info in app.commands.items() if info.get("module") == module_name]
+    for cmd in cmds_to_del:
         del app.commands[cmd]
-
     if module_name in sys.modules:
         del sys.modules[module_name]
-    if module_name in app.loaded_modules:
-        app.loaded_modules.remove(module_name)
+    app.loaded_modules.discard(module_name)
 
 def reload_module(app, module_name):
     folder = "modules"
@@ -46,7 +40,6 @@ def reload_module(app, module_name):
         if os.path.exists(os.path.join(d, f"{module_name}.py")):
             folder = d
             break
-    
     unload_module(app, module_name)
     return load_module(app, module_name, folder)
 
@@ -54,7 +47,6 @@ def load_all_modules(app):
     for folder in MODULE_DIRS:
         if not os.path.exists(folder):
             os.makedirs(folder)
-        
         for f in os.listdir(folder):
             if f.endswith(".py") and not f.startswith("_"):
                 load_module(app, f[:-3], folder)
