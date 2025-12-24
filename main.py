@@ -3,7 +3,7 @@ import os
 import sys
 import subprocess
 from pyrogram import Client, filters, idle
-import import
+import import import loaded_modules
 
 def get_git_commit():
     try:
@@ -122,6 +122,85 @@ async def main():
     
     await client.start()
     await idle()
+
+
+@app.on_message(filters.command("loadmod", prefixes=".") & filters.me)
+async def loadmod_command(client, message):
+    args = message.text.split()[1:]
+    if not args:
+        await message.reply(".loadmod <name>")
+        return
+    
+    module_name = args[0]
+    success = load_module(app, commands, ".", module_name)
+    
+    if success:
+        await message.reply(f"Loaded {module_name}")
+    else:
+        await message.reply(f"Failed {module_name}")
+
+@app.on_message(filters.command("unloadmod", prefixes=".") & filters.me)
+async def unloadmod_command(client, message):
+    args = message.text.split()[1:]
+    if not args:
+        await message.reply(".unloadmod <name>")
+        return
+    
+    module_name = args[0]
+    
+    to_remove = []
+    for cmd, info in commands.items():
+        if info.get("module") == module_name:
+            to_remove.append(cmd)
+    
+    for cmd in to_remove:
+        del commands[cmd]
+    
+    unload_module(module_name)
+    await message.reply(f"Unloaded {module_name}")
+
+@app.on_message(filters.command("reloadmod", prefixes=".") & filters.me)
+async def reloadmod_command(client, message):
+    args = message.text.split()[1:]
+    if not args:
+        await message.reply(".reloadmod <name>")
+        return
+    
+    module_name = args[0]
+    
+    to_remove = []
+    for cmd, info in commands.items():
+        if info.get("module") == module_name:
+            to_remove.append(cmd)
+    
+    for cmd in to_remove:
+        del commands[cmd]
+    
+    unload_module(module_name)
+    success = load_module(app, commands, ".", module_name)
+    
+    if success:
+        await message.reply(f"Reloaded {module_name}")
+    else:
+        await message.reply(f"Failed {module_name}")
+
+@app.on_message(filters.command("listmod", prefixes=".") & filters.me)
+async def listmod_command(client, message):
+    modules_dir = "modules"
+    
+    all_modules = []
+    if os.path.exists(modules_dir):
+        all_modules = [f[:-3] for f in os.listdir(modules_dir) if f.endswith(".py")]
+    
+    response = ""
+    for module in all_modules:
+        status = "LOADED" if module in loaded_modules else "NOT LOADED"
+        response += f"{module}: {status}\n"
+    
+    if not response:
+        response = "No modules"
+    
+    await message.reply(response)
 
 if __name__ == "__main__":
     asyncio.run(main())
