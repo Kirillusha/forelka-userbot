@@ -84,7 +84,7 @@ async def main():
     commands = {}
     client.commands = commands
     
-    import load_all_modules(client, commands, ".")
+    module_loader.load_all_modules(client, commands, ".")
     
     @client.on_message(filters.command("help", prefixes=".") & filters.me)
     async def help_command(client, message):
