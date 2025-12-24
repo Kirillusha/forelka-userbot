@@ -33,7 +33,7 @@ def find_session():
 
 async def hikka_like_auth():
     api_id = int(input("API ID: ").strip())
-    api_hash = input("API Hash: ").strip())
+    api_hash = int(input("API Hash: ").strip())
     phone = input("Phone: ").strip()
 
     tmp_name = "temp_auth_session"
