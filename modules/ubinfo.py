@@ -1,23 +1,11 @@
-from pyrogram.types import Message
-from pyrogram.enums import ParseMode
-
-async def forelka_cmd(client, message: Message, args):
+async def ubinfo_cmd(client, message, args):
     text = (
-        "💙Userbot Forelka started!\n\n"
-        "Channel: https://t.me/forelkauserbots\n"
-        "Modules: https://t.me/forelkausermodules\n"
-        "Support: https://t.me/forelusersupport"
+        "Forelka Userbot\n\n"
+        "Channel: @forelkauserbots\n"
+        "Modules: @forelkausermodules\n"
+        "Support: @forelusersupport"
     )
-    try:
-        await message.edit_text(text, parse_mode=ParseMode.HTML)
-    except Exception:
-        # Если редактирование не удалось (например, сообщение не от бота), отправим ответ
-        await message.reply(text)
+    await message.edit(text, disable_web_page_preview=True)
 
-def register(app, commands, prefix, module_name):
-    commands["forelka"] = {
-        "func": forelka_cmd,
-        "desc": "Показать информацию о Userbot Forelka",
-        "module": module_name
-    }
-    app._commands = commands
+def register(app, commands, module_name):
+    commands["forelka"] = {"func": ubinfo_cmd, "module": module_name}
