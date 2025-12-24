@@ -3,90 +3,76 @@ import importlib.util
 import os
 import sys
 import inspect
+import requests
 
 MODULE_DIRS = ["modules", "loaded_modules"]
 
-async def help_cmd(client, message, args):
-    text = (
-        f"**Forelka UB**\n"
-        f"**Modules:** `{len(client.loaded_modules)}`\n"
-        f"**Commands:** `{len(client.commands)}`\n\n"
-        f"**List:**\n`" + "`, `".join(sorted(client.commands.keys())) + "`"
-    )
-    await message.edit(text)
-
-async def reload_cmd(client, message, args):
-    if not args:
-        reload_all(client)
-        await message.edit("`All modules reloaded`")
-    else:
-        module_name = args[0]
-        if reload_module(client, module_name):
-            await message.edit(f"`Module {module_name} reloaded`")
-        else:
-            await message.edit(f"`Module {module_name} not found`")
-
-def register_system(app):
-    app.commands["help"] = {"func": help_cmd, "desc": "System help", "module": "system"}
-    app.commands["reload"] = {"func": reload_cmd, "desc": "Reload logic", "module": "system"}
-    app.loaded_modules.add("system")
-
-def load_module(app, module_name, folder):
-    file_path = os.path.join(folder, f"{module_name}.py")
-    if not os.path.exists(file_path):
-        return False
+async def dlm_cmd(client, message, args):
+    if len(args) < 2: 
+        return await message.edit(".dlm <url> <name>")
+    
+    url, name = args[0], args[1]
+    path = f"loaded_modules/{name}.py"
     try:
-        if module_name in sys.modules:
-            module = importlib.reload(sys.modules[module_name])
+        r = requests.get(url)
+        with open(path, "wb") as f: 
+            f.write(r.content)
+        if load_module(client, name, "loaded_modules"):
+            await message.edit(f"Loaded: {name}")
         else:
-            spec = importlib.util.spec_from_file_location(module_name, file_path)
-            module = importlib.util.module_from_spec(spec)
-            sys.modules[module_name] = module
-            spec.loader.exec_module(module)
+            await message.edit(f"Error loading: {name}")
+    except Exception as e: 
+        await message.edit(f"Error: {e}")
 
-        if hasattr(module, "register"):
-            sig = inspect.signature(module.register)
-            params = len(sig.parameters)
-            if params == 3:
-                module.register(app, app.commands, module_name)
-            elif params == 2:
-                module.register(app, app.commands)
-            else:
-                module.register(app)
-            app.loaded_modules.add(module_name)
+async def ulm_cmd(client, message, args):
+    if not args: 
+        return await message.edit(".ulm <name>")
+    
+    name, unloaded = args[0], False
+    for d in MODULE_DIRS:
+        path = f"{d}/{name}.py"
+        if os.path.exists(path):
+            unload_module(client, name)
+            os.remove(path)
+            unloaded = True
+            break
+    await message.edit("Deleted" if unloaded else "Not found")
+
+def load_module(app, name, folder):
+    path = os.path.join(folder, f"{name}.py")
+    if not os.path.exists(path): return False
+    try:
+        spec = importlib.util.spec_from_file_location(name, path)
+        mod = importlib.util.module_from_spec(spec)
+        if name in sys.modules: 
+            mod = importlib.reload(sys.modules[name])
+        else:
+            sys.modules[name] = mod
+            spec.loader.exec_module(mod)
+        if hasattr(mod, "register"):
+            sig = inspect.signature(mod.register)
+            if len(sig.parameters) == 3: 
+                mod.register(app, app.commands, name)
+            else: 
+                mod.register(app, app.commands)
+            app.loaded_modules.add(name)
             return True
-    except Exception:
+    except Exception: 
         return False
-    return False
 
-def unload_module(app, module_name):
-    to_del = [cmd for cmd, info in app.commands.items() if info.get("module") == module_name]
-    for cmd in to_del:
-        del app.commands[cmd]
-    if module_name in sys.modules:
-        del sys.modules[module_name]
-    app.loaded_modules.discard(module_name)
+def unload_module(app, name):
+    [app.commands.pop(k) for k in [k for k, v in app.commands.items() if v.get("module") == name]]
+    app.loaded_modules.discard(name)
+    if name in sys.modules: 
+        del sys.modules[name]
 
-def reload_module(app, module_name):
-    if module_name == "system":
-        register_system(app)
-        return True
-    folder = next((d for d in MODULE_DIRS if os.path.exists(os.path.join(d, f"{module_name}.py"))), "modules")
-    unload_module(app, module_name)
-    return load_module(app, module_name, folder)
-
-def load_all_modules(app):
-    register_system(app)
-    for folder in MODULE_DIRS:
-        if not os.path.exists(folder):
-            os.makedirs(folder)
-        for f in os.listdir(folder):
+def load_all(app):
+    app.commands["dlm"] = {"func": dlm_cmd, "module": "loader"}
+    app.commands["ulm"] = {"func": ulm_cmd, "module": "loader"}
+    app.loaded_modules.add("loader")
+    for d in MODULE_DIRS:
+        if not os.path.exists(d): 
+            os.makedirs(d)
+        for f in os.listdir(d):
             if f.endswith(".py") and not f.startswith("_"):
-                load_module(app, f[:-3], folder)
-
-def reload_all(app):
-    current = list(app.loaded_modules)
-    for m in current:
-        if m != "system":
-            unload_module(app, m)
-    load_all_modules(app)
+                load_module(app, f[:-3], d)
