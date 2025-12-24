@@ -10,6 +10,7 @@ def load_module(app, module_name, folder):
     if not os.path.exists(file_path):
         return False
     try:
+        # Hot-reload logic
         if module_name in sys.modules:
             module = importlib.reload(sys.modules[module_name])
         else:
@@ -19,10 +20,13 @@ def load_module(app, module_name, folder):
             spec.loader.exec_module(module)
 
         if hasattr(module, "register"):
+            # Согласно структуре: register(client, commands, module_name)
             module.register(app, app.commands, module_name)
             app.loaded_modules.add(module_name)
+            print(f"[LOADER] Success: {module_name} from {folder}/")
             return True
-    except Exception:
+    except Exception as e:
+        print(f"[LOADER] Failed {module_name} from {folder}: {e}")
         return False
     return False
 
@@ -44,9 +48,20 @@ def reload_module(app, module_name):
     return load_module(app, module_name, folder)
 
 def load_all_modules(app):
+    print(f"[LOADER] Scanning directories: {MODULE_DIRS}")
     for folder in MODULE_DIRS:
         if not os.path.exists(folder):
             os.makedirs(folder)
-        for f in os.listdir(folder):
-            if f.endswith(".py") and not f.startswith("_"):
-                load_module(app, f[:-3], folder)
+            print(f"[LOADER] Created directory: {folder}")
+            continue
+        
+        files = [f for f in os.listdir(folder) if f.endswith(".py") and not f.startswith("_")]
+        print(f"[LOADER] Found in {folder}: {files}")
+        
+        for f in files:
+            load_module(app, f[:-3], folder)
+
+def reload_all(app):
+    for m in list(app.loaded_modules):
+        unload_module(app, m)
+    load_all_modules(app)
