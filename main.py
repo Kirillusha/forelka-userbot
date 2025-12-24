@@ -2,17 +2,12 @@ import asyncio
 import os
 import sys
 import subprocess
-from pyrogram import Client, idle
-from import import load_modules
+from pyrogram import Client, filters, idle
+import import
 
 def get_git_commit():
     try:
-        result = subprocess.run(
-            ["git", "log", "--oneline", "-1", "--format=%h"],
-            capture_output=True,
-            text=True,
-            cwd=os.path.dirname(os.path.abspath(__file__))
-        )
+        result = subprocess.run(["git", "log", "--oneline", "-1", "--format=%h"], capture_output=True, text=True, cwd=os.path.dirname(os.path.abspath(__file__)))
         if result.returncode == 0 and result.stdout.strip():
             return result.stdout.strip()
     except:
@@ -21,30 +16,10 @@ def get_git_commit():
 
 def check_git_update():
     try:
-        subprocess.run(["git", "fetch"], 
-                      capture_output=True,
-                      cwd=os.path.dirname(os.path.abspath(__file__)))
-        
-        local = subprocess.run(
-            ["git", "rev-parse", "@"],
-            capture_output=True,
-            text=True,
-            cwd=os.path.dirname(os.path.abspath(__file__))
-        )
-        
-        remote = subprocess.run(
-            ["git", "rev-parse", "@{u}"],
-            capture_output=True,
-            text=True,
-            cwd=os.path.dirname(os.path.abspath(__file__))
-        )
-        
-        base = subprocess.run(
-            ["git", "merge-base", "@", "@{u}"],
-            capture_output=True,
-            text=True,
-            cwd=os.path.dirname(os.path.abspath(__file__))
-        )
+        subprocess.run(["git", "fetch"], capture_output=True, cwd=os.path.dirname(os.path.abspath(__file__)))
+        local = subprocess.run(["git", "rev-parse", "@"], capture_output=True, text=True, cwd=os.path.dirname(os.path.abspath(__file__)))
+        remote = subprocess.run(["git", "rev-parse", "@{u}"], capture_output=True, text=True, cwd=os.path.dirname(os.path.abspath(__file__)))
+        base = subprocess.run(["git", "merge-base", "@", "@{u}"], capture_output=True, text=True, cwd=os.path.dirname(os.path.abspath(__file__)))
         
         if local.stdout.strip() == remote.stdout.strip():
             return False, "No update needed"
@@ -52,7 +27,6 @@ def check_git_update():
             return True, "Update available!"
         else:
             return False, "Diverged"
-            
     except:
         return False, "Git check failed"
 
@@ -108,7 +82,25 @@ async def main():
     else:
         client = await hikka_like_auth()
     
-    await load_modules(client)
+    commands = {}
+    client.commands = commands
+    
+    import.load_all_modules(client, commands, ".")
+    
+    @client.on_message(filters.command("help", prefixes=".") & filters.me)
+    async def help_command(client, message):
+        response = "Commands:\n"
+        for cmd, info in commands.items():
+            response += f"{cmd}: {info.get('desc', 'No description')}\n"
+        await message.reply(response)
+    
+    @client.on_message(filters.command("reload", prefixes=".") & filters.me)
+    async def reload_all_command(client, message):
+        for module_name in list(import.loaded_modules.keys()):
+            import.unload_module(commands, module_name)
+        
+        import.load_all_modules(client, commands, ".")
+        await message.reply("All modules reloaded")
     
     current_commit = get_git_commit()
     needs_update, update_status = check_git_update()
@@ -128,6 +120,7 @@ async def main():
     else:
         print(update_status)
     
+    await client.start()
     await idle()
 
 if __name__ == "__main__":
