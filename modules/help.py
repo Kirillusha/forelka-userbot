@@ -1,21 +1,42 @@
+import os
 from pyrogram.enums import ParseMode
 
 async def help_cmd(client, message, args):
     prefix = getattr(client, "prefix", ".")
-    modules = {}
+    sys_mods = {}
+    ext_mods = {}
+   
+    system_directory = "modules"
+    
     for cmd_name, info in client.commands.items():
-        mod = info.get("module", "unknown")
-        modules.setdefault(mod, []).append(cmd_name)
+        mod_name = info.get("module", "unknown")
+        mod_path = ""
+        import sys
+        if mod_name in sys.modules:
+            mod_path = getattr(sys.modules[mod_name], "__file__", "")
 
-    content = ""
-    for mod, cmds in sorted(modules.items()):
-        cmds_str = " | ".join([f"{prefix}{c}" for c in sorted(cmds)])
-        content += f"<emoji id=5877468380125990242>➡️</emoji> <b>{mod}</b>\n<code>{cmds_str}</code>\n\n"
+        if "loaded_modules" in mod_path:
+            ext_mods.setdefault(mod_name, []).append(cmd_name)
+        else:
+            sys_mods.setdefault(mod_name, []).append(cmd_name)
 
-    text = (
-        f"<emoji id=5897962422169243693>👻</emoji> <b>Forelka Modules</b>\n"
-        f"<blockquote>{content.strip()}</blockquote>"
-    )
+    def format_mods(mods_dict):
+        res = ""
+        for mod, cmds in sorted(mods_dict.items()):
+            cmds_str = " | ".join([f"{prefix}{c}" for c in sorted(cmds)])
+            res += f"<emoji id=5877468380125990242>➡️</emoji> <b>{mod}</b> (<code>{cmds_str}</code>)\n"
+        return res.strip()
+
+    text = f"<emoji id=5897962422169243693>👻</emoji> <b>Forelka Modules</b>\n\n"
+    
+    if sys_mods:
+        text += f"<b>System:</b>\n<blockquote expandable>{format_mods(sys_mods)}</blockquote>\n\n"
+    
+    if ext_mods:
+        text += f"<b>External:</b>\n<blockquote expandable>{format_mods(ext_mods)}</blockquote>"
+    else:
+        text += f"<b>External:</b>\n<blockquote>No external modules</blockquote>"
+
     await message.edit(text, parse_mode=ParseMode.HTML)
 
 def register(app, commands, module_name):
