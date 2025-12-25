@@ -18,13 +18,16 @@ class TerminalLogger:
         self.log = open("forelka.log", "a", encoding="utf-8")
         self.ignore_list = [
             "PERSISTENT_TIMESTAMP_OUTDATED",
-            "updates.GetChannelDifference"
+            "updates.GetChannelDifference",
+            "RPC_CALL_FAIL", # запомните эту шалаву
+            "Retrying \"updates.GetChannelDifference\""
         ]
         
     def write(self, m):
+        if not m.strip():
+            return
         if any(x in m for x in self.ignore_list):
             return
-            
         self.terminal.write(m)
         self.log.write(m)
         self.log.flush()
@@ -37,7 +40,6 @@ sys.stdout = sys.stderr = TerminalLogger()
 async def handler(c, m):
     if not m.text: 
         return
-    
     path = f"config-{c.me.id}.json"
     pref = "."
     if os.path.exists(path):
@@ -46,17 +48,13 @@ async def handler(c, m):
                 pref = json.load(f).get("prefix", ".")
         except: 
             pass
-    
     if not m.text.startswith(pref): 
         return
-        
     parts = m.text[len(pref):].split(maxsplit=1)
     if not parts: 
         return
-    
     cmd = parts[0].lower()
     args = parts[1].split() if len(parts) > 1 else []
-    
     if cmd in c.commands:
         try: 
             await c.commands[cmd]["func"](c, m, args)
@@ -65,7 +63,6 @@ async def handler(c, m):
 
 async def main():
     utils.get_peer_type = lambda x: "channel" if str(x).startswith("-100") else ("chat" if x < 0 else "user")
-    
     sess = next((f for f in os.listdir() if f.startswith("forelka-") and f.endswith(".session")), None)
     if sess: 
         client = Client(sess[:-8])
