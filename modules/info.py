@@ -1,10 +1,9 @@
-import platform
 import os
 import time
 import psutil
 import json
 import subprocess
-from datetime import datetime
+from datetime import datetime, timedelta
 from pyrogram.enums import ParseMode
 
 start_time = time.time()
@@ -12,9 +11,6 @@ start_time = time.time()
 async def info_cmd(client, message, args):
     try:
         me = await client.get_me()
-        if not me:
-            return await message.edit("<b>Error:</b> <code>Could not get me()</code>")
-            
         path = f"config-{me.id}.json"
         
         pref = "."
@@ -32,13 +28,11 @@ async def info_cmd(client, message, args):
         except:
             pass
 
-        uptime_sec = int(time.time() - start_time)
-        uptime = str(datetime.utcfromtimestamp(uptime_sec).strftime('%H:%M:%S'))
+        uptime_sec = time.time() - start_time
+        uptime = str(timedelta(seconds=int(uptime_sec)))
         
-        cpu = psutil.cpu_percent(interval=None) or 0.0
-        
-        process = psutil.Process(os.getpid())
-        ram = process.memory_info().rss / 1024 / 1024
+        cpu = psutil.cpu_percent()
+        ram = psutil.Process(os.getpid()).memory_info().rss / 1024 / 1024
 
         text = (
             f"<emoji document_id=5373141891321699086>😎</emoji><b> Владелец:</b> <a href='tg://user?id={me.id}'><b>{me.first_name}</b></a>\n\n"
@@ -52,7 +46,7 @@ async def info_cmd(client, message, args):
 
         await message.edit(text, parse_mode=ParseMode.HTML, disable_web_page_preview=True)
     except Exception as e:
-        await message.edit(f"<b>Error:</b> <code>{str(e)}</code>")
+        await message.edit(f"<b>Error:</b> <code>{type(e).__name__}: {str(e)}</code>")
 
 def register(app, commands, module_name):
     commands["info"] = {"func": info_cmd, "module": module_name}
