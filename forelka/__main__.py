@@ -63,24 +63,39 @@ async def handler(c, m):
 
 async def main():
     utils.get_peer_type = lambda x: "channel" if str(x).startswith("-100") else ("chat" if x < 0 else "user")
-
-    sess = next((f for f in os.listdir() if f.startswith("forelka-") and f.endswith(".session")), None)
-    if sess: 
-        client = Client(sess[:-8])
+    sess_file = next((f for f in os.listdir(".") if f.startswith("forelka-") and f.endswith(".session")), None)
+    
+    if sess_file:
+        sess_name = sess_file[:-8]
+        client = Client(name=sess_name, workdir=".")
     else:
-        api_id, api_hash = input("API ID: "), input("API HASH: ")
-        temp = Client("temp", api_id=api_id, api_hash=api_hash)
+        api_id = input("API ID: ")
+        api_hash = input("API HASH: ")
+        temp = Client("temp", api_id=api_id, api_hash=api_hash, workdir=".")
         await temp.start()
         me = await temp.get_me()
         await temp.stop()
-        os.rename("temp.session", f"forelka-{me.id}.session")
-        client = Client(f"forelka-{me.id}", api_id=api_id, api_hash=api_hash)
+        new_name = f"forelka-{me.id}"
+        if os.path.exists("temp.session"):
+            os.rename("temp.session", f"{new_name}.session")
+        client = Client(name=new_name, api_id=api_id, api_hash=api_hash, workdir=".")
 
     client.commands = {}
     client.loaded_modules = set()
     client.add_handler(MessageHandler(handler, filters.me & filters.text))
 
     await client.start()
+    
+    path = f"config-{client.me.id}.json"
+    if os.path.exists(path):
+        try:
+            with open(path, "r") as f:
+                client.prefix = json.load(f).get("prefix", ".")
+        except:
+            client.prefix = "."
+    else:
+        client.prefix = "."
+
     loader.load_all(client)
 
     git = "unknown"
@@ -103,4 +118,7 @@ Forelka Started | Git: #{git}
     await idle()
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        pass
