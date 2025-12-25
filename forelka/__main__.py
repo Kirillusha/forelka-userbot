@@ -41,21 +41,37 @@ sys.stdout = sys.stderr = TerminalLogger()
 async def handler(c, m):
     if not m.text: 
         return
+    
     path = f"config-{c.me.id}.json"
-    pref = "."
+    conf = {"prefix": ".", "owners": [], "aliases": {}}
+    
     if os.path.exists(path):
         try:
-            with open(path, "r") as f: 
-                pref = json.load(f).get("prefix", ".")
-        except: 
+            with open(path, "r") as f:
+                conf.update(json.load(f))
+        except:
             pass
+
+    is_owner = (m.from_user and (m.from_user.id == c.me.id or m.from_user.id in conf.get("owners", [])))
+    if not is_owner:
+        return
+
+    pref = conf.get("prefix", ".")
     if not m.text.startswith(pref): 
         return
+        
     parts = m.text[len(pref):].split(maxsplit=1)
     if not parts: 
         return
+        
     cmd = parts[0].lower()
+    
+    aliases = conf.get("aliases", {})
+    if cmd in aliases:
+        cmd = aliases[cmd]
+        
     args = parts[1].split() if len(parts) > 1 else []
+    
     if cmd in c.commands:
         try: 
             await c.commands[cmd]["func"](c, m, args)
@@ -65,7 +81,7 @@ async def handler(c, m):
 async def main():
     utils.get_peer_type = lambda x: "channel" if str(x).startswith("-100") else ("chat" if x < 0 else "user")
     sess_file = next((f for f in os.listdir(".") if f.startswith("forelka-") and f.endswith(".session")), None)
-    
+
     if sess_file:
         sess_name = sess_file[:-8]
         client = Client(name=sess_name, workdir=".")
@@ -83,10 +99,10 @@ async def main():
 
     client.commands = {}
     client.loaded_modules = set()
-    client.add_handler(MessageHandler(handler, filters.me & filters.text))
+    client.add_handler(MessageHandler(handler, (filters.me | filters.incoming) & filters.text))
 
     await client.start()
-    
+
     path = f"config-{client.me.id}.json"
     if os.path.exists(path):
         try:
