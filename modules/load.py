@@ -5,7 +5,8 @@ from forelka import loader
 async def lm_cmd(client, message, args):
     if message.reply_to_message and message.reply_to_message.document:
         doc = message.reply_to_message.document
-        name = (args[0] if args else doc.file_name[:-3]).lower()
+        # Force lower case for the name
+        name = (args[0].lower() if args else doc.file_name[:-3].lower())
         
         if loader.is_protected(name): 
             return await message.edit("<blockquote><emoji id=5778527486270770928>❌</emoji> <b>Module is protected</b></blockquote>")
