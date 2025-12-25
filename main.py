@@ -63,6 +63,7 @@ async def handler(c, m):
 
 async def main():
     utils.get_peer_type = lambda x: "channel" if str(x).startswith("-100") else ("chat" if x < 0 else "user")
+    
     sess = next((f for f in os.listdir() if f.startswith("forelka-") and f.endswith(".session")), None)
     if sess: 
         client = Client(sess[:-8])
@@ -79,22 +80,26 @@ async def main():
     client.loaded_modules = set()
     client.add_handler(MessageHandler(handler, filters.me & filters.text))
 
-    print(fr"  __               _ _         ")
-    print(fr" / _|             | | |        ")
-    print(fr"| |_ ___  _ __ ___| | | ____ _ ")
-    print(fr"|  _/ _ \| '__/ _ \ | |/ / _` |")
-    print(fr"| || (_) | | |  __/ |   < (_| |")
-    print(fr"|_| \___/|_|  \___|_|_|\_\__,_|")
-    
+    await client.start()
+    loader.load_all(client)
+
     git = "unknown"
     try: 
         git = subprocess.check_output(["git", "rev-parse", "--short", "HEAD"]).decode().strip()
     except: 
         pass
-    print(f"Forelka Started | Git: #{git}\n")
 
-    await client.start()
-    loader.load_all(client)
+    print(fr"""
+  __               _ _         
+ / _|             | | |        
+| |_ ___  _ __ ___| | | ____ _ 
+|  _/ _ \| '__/ _ \ | |/ / _` |
+| || (_) | | |  __/ |   < (_| |
+|_| \___/|_|  \___|_|_|\_\__,_|
+
+Forelka Started | Git: #{git}
+""")
+
     await idle()
 
 if __name__ == "__main__":
