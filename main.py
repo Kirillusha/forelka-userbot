@@ -16,8 +16,15 @@ class TerminalLogger:
     def __init__(self):
         self.terminal = sys.stdout
         self.log = open("forelka.log", "a", encoding="utf-8")
+        self.ignore_list = [
+            "PERSISTENT_TIMESTAMP_OUTDATED",
+            "updates.GetChannelDifference"
+        ]
         
     def write(self, m):
+        if any(x in m for x in self.ignore_list):
+            return
+            
         self.terminal.write(m)
         self.log.write(m)
         self.log.flush()
