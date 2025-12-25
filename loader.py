@@ -1,62 +1,52 @@
+import importlib
 import importlib.util
 import os
 import sys
 import inspect
 import requests
-import traceback
 from pyrogram.enums import ParseMode
 
 MODULE_DIRS = ["modules", "loaded_modules"]
 
 async def dlm_cmd(client, message, args):
     if len(args) < 2:
-        return await message.edit("<emoji document_id=5775887550262546277>❗️</emoji> <b>Usage: .dlm [url] [name]</b>")
-    
+        return await message.edit("<emoji id=5775887550262546277>❗️</emoji> <b>Usage: .dlm [url] [name]</b>", parse_mode=ParseMode.HTML)
     url, name = args[0], args[1]
     path = f"loaded_modules/{name}.py"
-    await message.edit(f"<blockquote><emoji document_id=5891211339170326418>⌛️</emoji> <b>Downloading {name}...</b></blockquote>")
-    
+    await message.edit(f"<blockquote><emoji id=5891211339170326418>⌛️</emoji> <b>Downloading {name}...</b></blockquote>", parse_mode=ParseMode.HTML)
     try:
         r = requests.get(url, timeout=10)
-        r.raise_for_status()
         with open(path, "wb") as f:
             f.write(r.content)
-        
         if load_module(client, name, "loaded_modules"):
-            await message.edit(f"<emoji document_id=5776375003280838798>✅</emoji> <b>Module {name} installed!</b>")
+            await message.edit(f"<emoji id=5776375003280838798>✅</emoji> <b>Module {name} installed</b>", parse_mode=ParseMode.HTML)
         else:
-            await message.edit(f"<emoji document_id=5778527486270770928>❌</emoji> <b>Load failed. Check console.</b>")
+            await message.edit(f"<emoji id=5778527486270770928>❌</emoji> <b>Failed to load {name}</b>", parse_mode=ParseMode.HTML)
     except Exception as e:
-        await message.edit(f"<emoji document_id=5778527486270770928>❌</emoji> <b>Error:</b> <code>{e}</code>")
+        await message.edit(f"<emoji id=5778527486270770928>❌</emoji> <b>Error:</b> <code>{e}</code>", parse_mode=ParseMode.HTML)
 
 async def lm_cmd(client, message, args):
     if not message.reply_to_message or not message.reply_to_message.document:
-        return await message.edit("<emoji document_id=5775887550262546277>❗️</emoji> <b>Reply to a .py file!</b>")
-    
+        return await message.edit("<emoji id=5775887550262546277>❗️</emoji> <b>Reply to a .py file</b>", parse_mode=ParseMode.HTML)
     doc = message.reply_to_message.document
     if not doc.file_name.endswith(".py"):
-        return await message.edit("<emoji document_id=5775887550262546277>❗️</emoji> <b>Not a .py file.</b>")
-    
+        return await message.edit("<emoji id=5775887550262546277>❗️</emoji> <b>File must be .py</b>", parse_mode=ParseMode.HTML)
     name = args[0] if args else doc.file_name[:-3]
     path = f"loaded_modules/{name}.py"
-    
+    await message.edit(f"<blockquote><emoji id=5899757765743615694>⬇️</emoji> <b>Saving {name}...</b></blockquote>", parse_mode=ParseMode.HTML)
     try:
-        await message.edit(f"<blockquote><emoji document_id=5899757765743615694>⬇️</emoji> <b>Saving {name}...</b></blockquote>")
         await client.download_media(message.reply_to_message, file_name=path)
-        
         if load_module(client, name, "loaded_modules"):
-            await message.edit(f"<emoji document_id=5776375003280838798>✅</emoji> <b>Module {name} loaded!</b>")
+            await message.edit(f"<emoji id=5776375003280838798>✅</emoji> <b>Module {name} loaded</b>", parse_mode=ParseMode.HTML)
         else:
-            await message.edit(f"<emoji document_id=5778527486270770928>❌</emoji> <b>Import error. Check console.</b>")
+            await message.edit(f"<emoji id=5778527486270770928>❌</emoji> <b>Load failed</b>", parse_mode=ParseMode.HTML)
     except Exception as e:
-        await message.edit(f"<emoji document_id=5778527486270770928>❌</emoji> <b>Error:</b> <code>{e}</code>")
+        await message.edit(f"<emoji id=5778527486270770928>❌</emoji> <b>Error:</b> <code>{e}</code>", parse_mode=ParseMode.HTML)
 
 async def ulm_cmd(client, message, args):
     if not args:
-        return await message.edit("<emoji document_id=5775887550262546277>❗️</emoji> <b>Usage: .ulm [name]</b>")
-    
-    name = args[0]
-    unloaded = False
+        return await message.edit("<emoji id=5775887550262546277>❗️</emoji> <b>Usage: .ulm [name]</b>", parse_mode=ParseMode.HTML)
+    name, unloaded = args[0], False
     for d in MODULE_DIRS:
         path = f"{d}/{name}.py"
         if os.path.exists(path):
@@ -64,16 +54,14 @@ async def ulm_cmd(client, message, args):
             os.remove(path)
             unloaded = True
             break
-            
     if unloaded:
-        await message.edit(f"<emoji document_id=5776375003280838798>✅</emoji> <b>Module {name} deleted.</b>")
+        await message.edit(f"<emoji id=5776375003280838798>✅</emoji> <b>Module {name} deleted</b>", parse_mode=ParseMode.HTML)
     else:
-        await message.edit(f"<emoji document_id=5778527486270770928>❌</emoji> <b>Module not found.</b>")
+        await message.edit(f"<emoji id=5778527486270770928>❌</emoji> <b>Not found</b>", parse_mode=ParseMode.HTML)
 
 async def ml_cmd(client, message, args):
     if not args:
-        return await message.edit("<emoji document_id=5775887550262546277>❗️</emoji> <b>Usage: .ml [name]</b>")
-    
+        return await message.edit("<emoji id=5775887550262546277>❗️</emoji> <b>Usage: .ml [name]</b>", parse_mode=ParseMode.HTML)
     name = args[0]
     file_path = None
     for d in MODULE_DIRS:
@@ -81,40 +69,38 @@ async def ml_cmd(client, message, args):
         if os.path.exists(path):
             file_path = path
             break
-            
     if not file_path:
-        return await message.edit("<emoji document_id=5778527486270770928>❌</emoji> <b>File not found.</b>")
-    
+        return await message.edit("<emoji id=5778527486270770928>❌</emoji> <b>Module file not found</b>", parse_mode=ParseMode.HTML)
+
     await message.delete()
     await client.send_document(
         message.chat.id, 
         file_path, 
-        caption=f"<emoji document_id=5776375003280838798>✅</emoji> <b>Module:</b> <code>{name}</code>"
+        caption=f"<emoji id=5776375003280838798>✅</emoji> <b>Module:</b> <code>{name}</code>",
+        parse_mode=ParseMode.HTML
     )
 
 def load_module(app, name, folder):
     path = os.path.join(folder, f"{name}.py")
-    if not os.path.exists(path):
-        return False
+    if not os.path.exists(path): return False
     try:
         spec = importlib.util.spec_from_file_location(name, path)
-        if spec is None or spec.loader is None:
-            return False
-        
         mod = importlib.util.module_from_spec(spec)
         if name in sys.modules:
-            del sys.modules[name]
-            
-        sys.modules[name] = mod
-        spec.loader.exec_module(mod)
-        
+            mod = importlib.reload(sys.modules[name])
+        else:
+            sys.modules[name] = mod
+            spec.loader.exec_module(mod)
         if hasattr(mod, "register"):
-            mod.register(app, app.commands, name)
+            sig = inspect.signature(mod.register)
+            if len(sig.parameters) == 3:
+                mod.register(app, app.commands, name)
+            else:
+                mod.register(app, app.commands)
             app.loaded_modules.add(name)
             return True
-    except Exception:
-        print(f"\n[!] ERROR LOADING: {name}")
-        traceback.print_exc()
+    except Exception as e:
+        print(f"Load error {name}: {e}")
     return False
 
 def unload_module(app, name):
@@ -131,10 +117,8 @@ def load_all(app):
     app.commands["ulm"] = {"func": ulm_cmd, "module": "loader"}
     app.commands["ml"] = {"func": ml_cmd, "module": "loader"}
     app.loaded_modules.add("loader")
-    
     for d in MODULE_DIRS:
-        if not os.path.exists(d):
-            os.makedirs(d)
+        if not os.path.exists(d): os.makedirs(d)
         for f in sorted(os.listdir(d)):
             if f.endswith(".py") and not f.startswith("_"):
                 load_module(app, f[:-3], d)
