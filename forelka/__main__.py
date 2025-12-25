@@ -43,7 +43,7 @@ async def handler(c, m):
         return
     
     path = f"config-{c.me.id}.json"
-    conf = {"prefix": ".", "owners": [], "aliases": {}}
+    conf = {"prefix": ".", "aliases": {}}
     
     if os.path.exists(path):
         try:
@@ -51,10 +51,6 @@ async def handler(c, m):
                 conf.update(json.load(f))
         except:
             pass
-
-    is_owner = (m.from_user and (m.from_user.id == c.me.id or m.from_user.id in conf.get("owners", [])))
-    if not is_owner:
-        return
 
     pref = conf.get("prefix", ".")
     if not m.text.startswith(pref): 
@@ -99,7 +95,7 @@ async def main():
 
     client.commands = {}
     client.loaded_modules = set()
-    client.add_handler(MessageHandler(handler, (filters.me | filters.incoming) & filters.text))
+    client.add_handler(MessageHandler(handler, filters.me & filters.text))
 
     await client.start()
 
