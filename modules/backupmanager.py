@@ -1,10 +1,8 @@
 import os
 import io
 import zipfile
-from loader import load_module 
 
 async def backupmods_cmd(client, message, args):
-    """Backup all loaded modules to ZIP"""
     target_dir = "loaded_modules"
     
     if not os.path.exists(target_dir) or not os.listdir(target_dir):
@@ -33,7 +31,8 @@ async def backupmods_cmd(client, message, args):
     )
 
 async def restoremods_cmd(client, message, args):
-    """Restore modules from ZIP (reply)"""
+    import loader
+
     if not message.reply_to_message or not message.reply_to_message.document:
         return await message.edit("<blockquote><emoji id=5775887550262546277>❗️</emoji> <b>Reply to a ZIP backup</b></blockquote>")
     
@@ -55,7 +54,7 @@ async def restoremods_cmd(client, message, args):
             zip_ref.extractall(target_dir, members=py_files)
             
             for file in py_files:
-                load_module(client, file[:-3], target_dir)
+                loader.load_module(client, file[:-3], target_dir)
         
         stk = "<emoji id=5877540355187937244>📤</emoji>"
         await message.edit(f"<blockquote>{stk} <b>Restored {len(py_files)} modules!</b></blockquote>")
