@@ -5,6 +5,17 @@ import loader
 import subprocess
 from pyrogram import Client, idle, filters, utils
 from pyrogram.handlers import MessageHandler
+import logging
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(levelname)s - %(message)s",
+    handlers=[
+        logging.FileHandler("forelka.log"),
+        logging.StreamHandler()
+    ]
+)
+
 
 def get_commit():
     try: 
