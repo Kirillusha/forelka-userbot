@@ -1,24 +1,16 @@
 import time
-from pyrogram.types import Message
+from pyrogram.enums import ParseMode
 
-async def ping(client, message: Message, args):
-    start = time.perf_counter()  # время начала
-    try:
-        # Сначала редакция сообщения в "Pong!"
-        await message.edit_text("Pong!")
-        end = time.perf_counter()  # время после редактирования
-        latency_ms = (end - start) * 1000
-        # Отредактируем сообщение еще раз, чтобы добавить задержку
-        await message.edit_text(f"Pong! 🏓\nЗадержка: {latency_ms:.2f} ms")
-    except Exception:
-        # Если не получилось отредактировать сообщение, отправим новое
-        end = time.perf_counter()
-        latency_ms = (end - start) * 1000
-        await message.reply(f"Pong! 🏓\nЗадержка: {latency_ms:.2f} ms")
+async def ping_cmd(client, message, args):
+    start = time.perf_counter()
+    await message.edit("<blockquote><emoji id=5891211339170326418>⌛️</emoji> <b>Pinging...</b></blockquote>", parse_mode=ParseMode.HTML)
+    
+    ms = (time.perf_counter() - start) * 1000
+    res = (
+        f"<emoji id=5897962422169243693>👻</emoji> <b>Pong</b>\n"
+        f"<blockquote><emoji id=5776375003280838798>✅</emoji> <b>Latency:</b> <code>{ms:.2f} ms</code></blockquote>"
+    )
+    await message.edit(res, parse_mode=ParseMode.HTML)
 
-def register(app, commands, prefix, module_name):
-    commands["ping"] = {
-        "func": ping,
-        "desc": "Проверить отклик",
-        "module": module_name
-    }
+def register(app, commands, module_name):
+    commands["ping"] = {"func": ping_cmd, "module": module_name}

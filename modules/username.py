@@ -1,25 +1,14 @@
-from pyrogram.types import Message
 from pyrogram.enums import ParseMode
 
-async def username_cmd(client, message: Message, args):
-    # Получаем информацию о текущем пользователе
+async def username_cmd(client, message, args):
     me = await client.get_me()
+    user = f"@{me.username}" if me.username else "None"
     
-    # Формируем текст с юзернеймом
-    if me.username:
-        text = f"🧑‍💻 Ваш юзернейм: @{me.username}"
-    else:
-        text = "🧑‍💻 У вас нет установленного юзернейма."
-    
-    try:
-        await message.edit_text(text, parse_mode=ParseMode.HTML)
-    except Exception:
-        await message.reply(text, parse_mode=ParseMode.HTML)
+    res = (
+        f"<emoji id=5771887475421090729>👤</emoji> <b>Account</b>\n"
+        f"<blockquote><b>Username:</b> <code>{user}</code></blockquote>"
+    )
+    await message.edit(res, parse_mode=ParseMode.HTML)
 
-def register(app, commands, prefix, module_name):
-    commands["username"] = {
-        "func": username_cmd,
-        "desc": "Показать ваш юзернейм аккаунта",
-        "module": module_name
-    }
-    app._commands = commands
+def register(app, commands, module_name):
+    commands["username"] = {"func": username_cmd, "module": module_name}

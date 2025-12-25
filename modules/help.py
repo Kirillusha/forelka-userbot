@@ -1,34 +1,43 @@
-from pyrogram.types import Message
+import os
 from pyrogram.enums import ParseMode
 
-async def help_cmd(client, message: Message, args):
-    commands = client._commands
-    prefix = client.prefix
-    modules = {}
-    for cmd_name, info in commands.items():
-        mod = info.get("module", "unknown")
-        modules.setdefault(mod, []).append(cmd_name)
-
-    text_lines = []
-    text_lines.append(f"🪐 {len(modules)} модулей доступно:\n")
+async def help_cmd(client, message, args):
+    prefix = getattr(client, "prefix", ".")
+    sys_mods = {}
+    ext_mods = {}
+   
+    system_directory = "modules"
     
-    # Формируем построчно модули с командами в скобках
-    for mod, cmds in sorted(modules.items()):
-        cmds_sorted = sorted(cmds)
-        cmds_str = " | ".join([f"{prefix}{cmd}" for cmd in cmds_sorted])
-        text_lines.append(f"▪️ {mod}: ( {cmds_str} )")
+    for cmd_name, info in client.commands.items():
+        mod_name = info.get("module", "unknown")
+        mod_path = ""
+        import sys
+        if mod_name in sys.modules:
+            mod_path = getattr(sys.modules[mod_name], "__file__", "")
+
+        if "loaded_modules" in mod_path:
+            ext_mods.setdefault(mod_name, []).append(cmd_name)
+        else:
+            sys_mods.setdefault(mod_name, []).append(cmd_name)
+
+    def format_mods(mods_dict):
+        res = ""
+        for mod, cmds in sorted(mods_dict.items()):
+            cmds_str = " | ".join([f"{prefix}{c}" for c in sorted(cmds)])
+            res += f"<emoji id=5877468380125990242>➡️</emoji> <b>{mod}</b> (<code>{cmds_str}</code>)\n"
+        return res.strip()
+
+    text = f"<emoji id=5897962422169243693>👻</emoji> <b>Forelka Modules</b>\n\n"
     
-    text = "\n".join(text_lines)
+    if sys_mods:
+        text += f"<b>System:</b>\n<blockquote expandable>{format_mods(sys_mods)}</blockquote>\n\n"
+    
+    if ext_mods:
+        text += f"<b>External:</b>\n<blockquote expandable>{format_mods(ext_mods)}</blockquote>"
+    else:
+        text += f"<b>External:</b>\n<blockquote>No external modules</blockquote>"
 
-    try:
-        await message.edit_text(text, parse_mode=ParseMode.HTML)
-    except Exception:
-        await message.reply(text, parse_mode=ParseMode.HTML)
+    await message.edit(text, parse_mode=ParseMode.HTML)
 
-def register(app, commands, prefix, module_name):
-    commands["help"] = {
-        "func": help_cmd,
-        "desc": "Показать это сообщение помощи",
-        "module": module_name
-    }
-    app._commands = commands
+def register(app, commands, module_name):
+    commands["help"] = {"func": help_cmd, "module": module_name}

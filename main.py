@@ -1,96 +1,70 @@
-import configparser
-import sys
-import logging
-import importlib
-from pyrogram import Client, filters
-from pyrogram.types import Message
-from utils import get_command_from_message
-from modules.loader import ModuleLoader
-from database import Database
+import asyncio
+import os
+import json
+import loader
+import subprocess
+from pyrogram import Client, idle, filters, utils
+from pyrogram.handlers import MessageHandler
 
-commands = {}
+def get_commit():
+    try: 
+        return subprocess.check_output(["git", "rev-parse", "--short", "HEAD"]).decode().strip()
+    except: 
+        return "unknown"
 
-logging.basicConfig(
-    filename='forelka.log',
-    level=logging.INFO,
-    format='%(asctime)s %(levelname)s %(message)s',
-    encoding='utf-8'
-)
-
-config = configparser.ConfigParser()
-config.read("config.ini")
-
-api_id = int(config["pyrogram"]["api_id"])
-api_hash = config["pyrogram"]["api_hash"]
-session_name = config["pyrogram"]["session_name"]
-default_prefix = config["pyrogram"].get("command_prefix", "/")
-
-owner_id = int(config["pyrogram"].get("owner_id", 0))
-if owner_id == 0:
-    raise ValueError("В config.ini не указан owner_id — ID владельца юзербота")
-
-db = Database()
-
-app = Client(session_name, api_id=api_id, api_hash=api_hash)
-
-commands = {}
-
-prefix = db.get("prefix", default_prefix)
-app.prefix = prefix
-app.db = db
-
-loader = ModuleLoader(app, commands, app.prefix)
-loader.load_modules()
-
-async def reload_command(client, message: Message, args):
-    reloaded_count = 0
-    for module_name, module in list(sys.modules.items()):
-        if module_name and module_name.startswith("modules"):
+async def handler(c, m):
+    if not m.text: return
+    
+    path = f"config-{m.from_user.id}.json"
+    pref = "." 
+    if os.path.exists(path):
+        with open(path, "r") as f:
             try:
-                importlib.reload(module)
-                reloaded_count += 1
-            except Exception:
-                pass
-    await message.reply(f"Перезагружено {reloaded_count} модулей.")
+                cfg = json.load(f)
+                pref = cfg.get("prefix", ".")
+            except: pass
 
-commands["reload"] = {
-    "func": reload_command,
-    "desc": "Перезагрузить все модули",
-    "module": "system"
-}
+    if not m.text.startswith(pref): return
+    
+    cmd_part = m.text[len(pref):].split(maxsplit=1)
+    if not cmd_part: return
+    
+    cmd = cmd_part[0].lower()
+    args = cmd_part[1].split() if len(cmd_part) > 1 else []
 
-@app.on_message(filters.me & filters.text)
-async def handler(client: Client, message: Message):
-    if message.from_user is None or message.from_user.id != owner_id:
+    if cmd in c.commands:
+        try: 
+            await c.commands[cmd]["func"](c, m, args)
+        except Exception: 
+            pass
+
+async def main():
+    utils.get_peer_type = lambda x: "channel" if str(x).startswith("-100") else ("chat" if x < 0 else "user")
+    sess = next((f[:-8] for f in os.listdir() if f.startswith("forelka-") and f.endswith(".session")), None)
+    if not sess: 
+        print("No session found!")
         return
 
-    cmd_data = get_command_from_message(message, client.prefix)
-    if not cmd_data:
-        return
-    command, args = cmd_data
-    cmd_info = commands.get(command)
-    if cmd_info:
-        await cmd_info["func"](client, message, args)
+    client = Client(sess)
+    client.commands, client.loaded_modules = {}, set()
+   
+    client.add_handler(MessageHandler(handler, filters.me & filters.text))
 
-def print_banner():
-    banner = r"""
-    _     _           
-|      | |             | |         |_|  ||  |_|  |
-|  _       _     _       _          ||       |
-| | |     | |   | |     | |         ||       |
-| |_|     |_|   |_|     |_|         ||       |
-|                             _  _|| |
- |_|       |_|
-                                                         
-"""
-    print(banner)
+    loader.load_all(client)
 
+    print("  __               _ _         ")
+    print(" / _|             | | |        ")
+    print("| |_ ___  _ __ ___| | | ____ _ ")
+    print("|  _/ _ \\| '__/ _ \\ | |/ / _` |")
+    print("| || (_) | | |  __/ |   < (_| |")
+    print("|_| \\___/|_|  \\___|_|_|\\_\\__,_|")
+    print("                               ")
+    print("Forelka Started")
+    print(f"Git: #{get_commit()}")
+    print()
 
+    await client.start()
+    await idle()
 
 if __name__ == "__main__":
-    print_banner()
-    print(f"Юзербот Forelka запущен! Текущий префикс: {app.prefix}")
-    try:
-        app.run()
-    finally:
-        db.close()
+    asyncio.run(main())
