@@ -20,7 +20,8 @@ class TerminalLogger:
             "PERSISTENT_TIMESTAMP_OUTDATED",
             "updates.GetChannelDifference",
             "RPC_CALL_FAIL",
-            "Retrying \"updates.GetChannelDifference\""
+            "Retrying \"updates.GetChannelDifference\"",
+            "disable_web_page_preview"
         ]
 
     def write(self, m):
