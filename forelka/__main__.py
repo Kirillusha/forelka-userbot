@@ -10,7 +10,7 @@ from pyrogram import filters
 from pyrogram import utils
 from pyrogram.handlers import MessageHandler
 
-import loader
+from . import loader
 
 class TerminalLogger:
     def __init__(self):
