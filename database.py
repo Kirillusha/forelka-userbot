@@ -1,4 +1,3 @@
-#создание бд
 import sqlite3
 import threading
 
@@ -37,3 +36,4 @@ class Database:
 
     def close(self):
         self.conn.close()
+
