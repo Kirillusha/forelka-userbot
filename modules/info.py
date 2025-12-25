@@ -12,6 +12,9 @@ start_time = time.time()
 async def info_cmd(client, message, args):
     try:
         me = await client.get_me()
+        if not me:
+            return await message.edit("<b>Error:</b> <code>Could not get me()</code>")
+            
         path = f"config-{me.id}.json"
         
         pref = "."
@@ -31,8 +34,11 @@ async def info_cmd(client, message, args):
 
         uptime_sec = int(time.time() - start_time)
         uptime = str(datetime.utcfromtimestamp(uptime_sec).strftime('%H:%M:%S'))
-        cpu = psutil.cpu_percent()
-        ram = psutil.Process(os.getpid()).memory_info().rss / 1024 / 1024
+        
+        cpu = psutil.cpu_percent(interval=None) or 0.0
+        
+        process = psutil.Process(os.getpid())
+        ram = process.memory_info().rss / 1024 / 1024
 
         text = (
             f"<emoji document_id=5373141891321699086>😎</emoji><b> Владелец:</b> <a href='tg://user?id={me.id}'><b>{me.first_name}</b></a>\n\n"
