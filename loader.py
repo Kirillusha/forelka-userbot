@@ -48,9 +48,6 @@ def load_module(app, name, folder, warnings=None, reqs_out=None):
             temp_commands = {}
             reg(app, temp_commands, name)
             for cmd_name, cmd_data in temp_commands.items():
-                func = cmd_data.get("func")
-                if warnings is not None and (not func.__doc__ or not func.__doc__.strip()):
-                    warnings.append(cmd_name)
                 app.commands[cmd_name] = cmd_data
             if not hasattr(app, "meta_data"): app.meta_data = {}
             app.meta_data[name] = get_full_meta(path)
@@ -100,11 +97,10 @@ async def lm_cmd(client, message, args):
             m = client.meta_data.get(name, {})
             stk = "<emoji id=5877540355187937244>📤</emoji>"
             r_txt = "\n" + "\n".join([f"{stk} <code>{r}</code> installed." for r in reqs]) if reqs else ""
-            w_txt = "\n" + "\n".join([f"{stk} <code>{w}</code> No description." for w in warnings]) if warnings else ""
             res = (f"<blockquote>✅ <b>Module <code>{name}</code> installed!</b>\n\n"
                    f"<emoji id=5818865045613842183>👤</emoji> <b>Dev:</b> {m.get('developer')}\n"
                    f"{stk} <b>Ver:</b> <code>{m.get('version')}</code>\n"
-                   f"<emoji id=5819077443918500243>📝</emoji> <b>Info:</b> <i>{m.get('description')}</i>{r_txt}{w_txt}</blockquote>")
+                   f"<emoji id=5819077443918500243>📝</emoji> <b>Info:</b> <i>{m.get('description')}</i>{r_txt}</blockquote>")
             await message.edit(res)
         else: await message.edit("<blockquote>❌ <b>Load failed</b></blockquote>")
     else:
@@ -122,3 +118,9 @@ async def dlm_cmd(client, message, args):
         if load_module(client, name, "loaded_modules"):
             await message.edit(f"<blockquote>✅ <b><code>{name}</code> installed</b></blockquote>")
     except Exception as e: await message.edit(f"<blockquote>❌ <b>Error:</b> <code>{e}</code></blockquote>")
+
+def register(app, commands, module_name):
+    commands["lm"] = {"func": lm_cmd, "module": module_name}
+    commands["ml"] = {"func": ml_cmd, "module": module_name}
+    commands["ulm"] = {"func": ulm_cmd, "module": module_name}
+    commands["dlm"] = {"func": dlm_cmd, "module": module_name}
