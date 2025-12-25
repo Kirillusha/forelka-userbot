@@ -85,6 +85,7 @@ def load_module(app, name, folder):
     if not os.path.exists(path): return False
     try:
         spec = importlib.util.spec_from_file_location(name, path)
+        if spec is None: return False
         mod = importlib.util.module_from_spec(spec)
         if name in sys.modules:
             mod = importlib.reload(sys.modules[name])
