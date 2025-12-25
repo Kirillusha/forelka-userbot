@@ -6,7 +6,6 @@ import json
 import subprocess
 from datetime import datetime
 from pyrogram.enums import ParseMode
-from pyrogram.types import InputMediaPhoto
 
 start_time = time.time()
 
@@ -57,15 +56,6 @@ async def info_cmd(client, message, args):
     )
 
     if banner_url:
-        if message.photo or message.caption:
-            try:
-                await message.edit_media(
-                    media=InputMediaPhoto(banner_url, caption=text),
-                    parse_mode=ParseMode.HTML
-                )
-                return
-            except: pass
-        
         try:
             await client.send_photo(message.chat.id, banner_url, caption=text, parse_mode=ParseMode.HTML)
             await message.delete()
