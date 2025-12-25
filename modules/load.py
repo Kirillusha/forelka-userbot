@@ -1,6 +1,6 @@
 import os
 import requests
-import loader
+from forelka import loader
 
 async def lm_cmd(client, message, args):
     if message.reply_to_message and message.reply_to_message.document:
