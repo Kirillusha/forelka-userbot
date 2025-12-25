@@ -14,7 +14,7 @@ def get_commit():
 
 async def handler(c, m):
     if not m.text: return
-    
+
     path = f"config-{m.from_user.id}.json"
     pref = "." 
     if os.path.exists(path):
@@ -25,10 +25,10 @@ async def handler(c, m):
             except: pass
 
     if not m.text.startswith(pref): return
-    
+
     cmd_part = m.text[len(pref):].split(maxsplit=1)
     if not cmd_part: return
-    
+
     cmd = cmd_part[0].lower()
     args = cmd_part[1].split() if len(cmd_part) > 1 else []
 
@@ -40,17 +40,25 @@ async def handler(c, m):
 
 async def main():
     utils.get_peer_type = lambda x: "channel" if str(x).startswith("-100") else ("chat" if x < 0 else "user")
-    sess = next((f[:-8] for f in os.listdir() if f.startswith("forelka-") and f.endswith(".session")), None)
-    if not sess: 
-        print("No session found!")
-        return
+    
+    sess_file = next((f for f in os.listdir() if f.startswith("forelka-") and f.endswith(".session")), None)
+    
+    if sess_file:
+        sess_name = sess_file[:-8]
+    else:
+        temp_client = Client("temp_session")
+        await temp_client.start()
+        me = await temp_client.get_me()
+        user_id = me.id
+        await temp_client.stop()
+        
+        sess_name = f"forelka-{user_id}"
+        os.rename("temp_session.session", f"{sess_name}.session")
 
-    client = Client(sess)
+    client = Client(sess_name)
     client.commands, client.loaded_modules = {}, set()
-   
-    client.add_handler(MessageHandler(handler, filters.me & filters.text))
 
-    loader.load_all(client)
+    client.add_handler(MessageHandler(handler, filters.me & filters.text))
 
     print("  __               _ _         ")
     print(" / _|             | | |        ")
@@ -64,6 +72,7 @@ async def main():
     print()
 
     await client.start()
+    loader.load_all(client)
     await idle()
 
 if __name__ == "__main__":
