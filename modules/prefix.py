@@ -9,11 +9,9 @@ async def prefix_cmd(client, message, args):
         with open(path, "r") as f:
             try: cfg = json.load(f)
             except: pass
-
     if not args:
         current = cfg.get("prefix", ".")
         return await message.edit(f"<emoji id=5897962422169243693>👻</emoji> <b>Settings</b>\n<blockquote><b>Current prefix:</b> <code>{current}</code></blockquote>", parse_mode=ParseMode.HTML)
-
     new_prefix = args[0][:3]
     cfg["prefix"] = new_prefix
     with open(path, "w") as f: json.dump(cfg, f, indent=4)
@@ -22,4 +20,3 @@ async def prefix_cmd(client, message, args):
 
 def register(app, commands, module_name):
     commands["prefix"] = {"func": prefix_cmd, "module": module_name}
-    commands["setprefix"] = {"func": prefix_cmd, "module": module_name}
