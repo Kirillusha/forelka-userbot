@@ -13,18 +13,23 @@ def save_config(c, data):
     with open(path, "w") as f:
         json.dump(data, f, indent=4)
 
+async def answer(m, text):
+    if m.from_user and m.from_user.is_self:
+        return await m.edit(text)
+    return await m.reply(text)
+
 async def owner_cmd(c, m, args):
     config = get_config(c)
     owners = config.get("owners", [])
 
     if not args and not m.reply_to_message:
         if not owners:
-            return await m.edit("<b><emoji id=5778527486270770928>❌</emoji> Owners list is empty</b>")
+            return await answer(m, "<b><emoji id=5778527486270770928>❌</emoji> Owners list is empty</b>")
         
         out = "<b><emoji id=5771887475421090729>👤</emoji> Authorized Owners:</b>\n"
         for o in owners:
             out += f"<blockquote><code>{o}</code></blockquote>"
-        return await m.edit(out)
+        return await answer(m, out)
 
     user_id = None
     if m.reply_to_message:
@@ -33,21 +38,21 @@ async def owner_cmd(c, m, args):
         try:
             user_id = int(args[0])
         except (ValueError, IndexError):
-            return await m.edit("<b><emoji id=5775887550262546277>❗️</emoji> Provide a valid ID or reply</b>")
+            return await answer(m, "<b><emoji id=5775887550262546277>❗️</emoji> Provide a valid ID or reply</b>")
 
     if user_id == c.me.id:
-        return await m.edit("<b><emoji id=5775887550262546277>❗️</emoji> You are the main owner</b>")
+        return await answer(m, "<b><emoji id=5775887550262546277>❗️</emoji> You are the main owner</b>")
 
     if user_id not in owners:
         owners.append(user_id)
         config["owners"] = owners
         save_config(c, config)
-        await m.edit(f"<b><emoji id=5776375003280838798>✅</emoji> Added <code>{user_id}</code> to owners</b>")
+        await answer(m, f"<b><emoji id=5776375003280838798>✅</emoji> Added <code>{user_id}</code> to owners</b>")
     else:
         owners.remove(user_id)
         config["owners"] = owners
         save_config(c, config)
-        await m.edit(f"<b><emoji id=5776375003280838798>✅</emoji> Removed <code>{user_id}</code> from owners</b>")
+        await answer(m, f"<b><emoji id=5776375003280838798>✅</emoji> Removed <code>{user_id}</code> from owners</b>")
 
 def register(app, commands, module_name):
     commands["owner"] = {"func": owner_cmd, "module": module_name}
