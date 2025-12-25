@@ -27,7 +27,11 @@ async def dlm_cmd(client, message, args):
 
 async def lm_cmd(client, message, args):
     if not message.reply_to_message or not message.reply_to_message.document:
-        return await message.edit("<emoji id=5775887550262546277>❗️</emoji> <b>Reply to a .py file</b>", parse_mode=ParseMode.HTML)
+        out = "<b>Modules:</b>\n"
+        for m in sorted(client.loaded_modules):
+            out += f" • <code>{m}</code>\n"
+        return await message.edit(out, parse_mode=ParseMode.HTML)
+        
     doc = message.reply_to_message.document
     if not doc.file_name.endswith(".py"):
         return await message.edit("<emoji id=5775887550262546277>❗️</emoji> <b>File must be .py</b>", parse_mode=ParseMode.HTML)
@@ -81,17 +85,17 @@ async def ml_cmd(client, message, args):
     )
 
 def load_module(app, name, folder):
-    path = os.path.join(folder, f"{name}.py")
+    path = os.path.abspath(os.path.join(folder, f"{name}.py"))
     if not os.path.exists(path): return False
     try:
         spec = importlib.util.spec_from_file_location(name, path)
-        if spec is None: return False
+        if spec is None or spec.loader is None:
+            return False
+            
         mod = importlib.util.module_from_spec(spec)
-        if name in sys.modules:
-            mod = importlib.reload(sys.modules[name])
-        else:
-            sys.modules[name] = mod
-            spec.loader.exec_module(mod)
+        sys.modules[name] = mod
+        spec.loader.exec_module(mod)
+        
         if hasattr(mod, "register"):
             sig = inspect.signature(mod.register)
             if len(sig.parameters) == 3:
@@ -118,6 +122,7 @@ def load_all(app):
     app.commands["ulm"] = {"func": ulm_cmd, "module": "loader"}
     app.commands["ml"] = {"func": ml_cmd, "module": "loader"}
     app.loaded_modules.add("loader")
+    
     for d in MODULE_DIRS:
         if not os.path.exists(d): os.makedirs(d)
         for f in sorted(os.listdir(d)):
