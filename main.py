@@ -19,7 +19,7 @@ class TerminalLogger:
         self.ignore_list = [
             "PERSISTENT_TIMESTAMP_OUTDATED",
             "updates.GetChannelDifference",
-            "RPC_CALL_FAIL", # запомните эту шалаву
+            "RPC_CALL_FAIL",
             "Retrying \"updates.GetChannelDifference\""
         ]
         
@@ -79,12 +79,12 @@ async def main():
     client.loaded_modules = set()
     client.add_handler(MessageHandler(handler, filters.me & filters.text))
 
-    print(r"  __               _ _         ")
-    print(r" / _|             | | |        ")
-    print(r"| |_ ___  _ __ ___| | | ____ _ ")
-    print(r"|  _/ _ \| '__/ _ \ | |/ / _` |")
-    print(r"| || (_) | | |  __/ |   < (_| |")
-    print(r"|_| \___/|_|  \___|_|_|\_\__,_|")
+    print(fr"  __               _ _         ")
+    print(fr" / _|             | | |        ")
+    print(fr"| |_ ___  _ __ ___| | | ____ _ ")
+    print(fr"|  _/ _ \| '__/ _ \ | |/ / _` |")
+    print(fr"| || (_) | | |  __/ |   < (_| |")
+    print(fr"|_| \___/|_|  \___|_|_|\_\__,_|")
     
     git = "unknown"
     try: 
