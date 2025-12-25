@@ -10,7 +10,7 @@ start_time = time.time()
 async def info_cmd(client, message, args):
     try:
         me = await client.get_me()
-        user_id = me.id if me else "unknown"
+        user_id = me.id if me else 0
         first_name = me.first_name if me else "User"
         
         pref = "."
@@ -22,14 +22,15 @@ async def info_cmd(client, message, args):
                     pref = cfg.get("prefix", ".")
         except: pass
 
-        commit = "unknown"
-        branch = "unknown"
+        commit, branch = "unknown", "unknown"
         try:
-            commit = subprocess.check_output(["git", "rev-parse", "--short", "HEAD"], stderr=subprocess.DEVNULL).decode().strip()
-            branch = subprocess.check_output(["git", "rev-parse", "--abbrev-ref", "HEAD"], stderr=subprocess.DEVNULL).decode().strip()
+            commit = subprocess.check_output(["git", "rev-parse", "--short", "HEAD"], stderr=subprocess.STDOUT).decode().strip()
+            branch = subprocess.check_output(["git", "rev-parse", "--abbrev-ref", "HEAD"], stderr=subprocess.STDOUT).decode().strip()
         except: pass
 
-        uptime = str(timedelta(seconds=int(time.time() - start_time)))
+        now = time.time()
+        diff = now - start_time
+        uptime = str(timedelta(seconds=int(diff)))
 
         text = (
             f"<emoji document_id=5373141891321699086>😎</emoji><b> Владелец:</b> <a href='tg://user?id={user_id}'><b>{first_name}</b></a>\n\n"
@@ -41,7 +42,7 @@ async def info_cmd(client, message, args):
 
         await message.edit(text, parse_mode=ParseMode.HTML, disable_web_page_preview=True)
     except Exception as e:
-        await message.edit(f"<b>Error:</b> <code>{str(e)}</code>")
+        await message.edit(f"<b>Ошибка:</b> <code>{str(e)}</code>")
 
 def register(app, commands, module_name):
     commands["info"] = {"func": info_cmd, "module": module_name}
