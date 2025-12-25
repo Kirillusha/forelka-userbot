@@ -66,13 +66,11 @@ def load_all(app):
             if file.endswith(".py") and file != "__init__.py":
                 load_module(app, file[:-3], folder)
 
-
 async def ml_cmd(client, message, args):
     if not args: return await message.edit("<blockquote>❗️ <b>Module name required</b></blockquote>")
     name = args[0].lower()
     path = next((f"{f}/{name}.py" for f in ["modules", "loaded_modules"] if os.path.exists(f"{f}/{name}.py")), None)
     if not path: return await message.edit(f"<blockquote>❌ <b>Module <code>{name}</code> not found</b></blockquote>")
-    
     topic_id = message.message_thread_id if message.message_thread_id else None
     await message.delete()
     await client.send_document(chat_id=message.chat.id, document=path, message_thread_id=topic_id)
