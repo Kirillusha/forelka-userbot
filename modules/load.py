@@ -5,8 +5,7 @@ from forelka import loader
 async def lm_cmd(client, message, args):
     if message.reply_to_message and message.reply_to_message.document:
         doc = message.reply_to_message.document
-        # Force lower case for the name
-        name = (args[0].lower() if args else doc.file_name[:-3].lower())
+        name = doc.file_name[:-3].lower()
         
         if loader.is_protected(name): 
             return await message.edit("<blockquote><emoji id=5778527486270770928>❌</emoji> <b>Module is protected</b></blockquote>")
@@ -77,14 +76,26 @@ async def ml_cmd(client, message, args):
         return await message.edit("<blockquote><emoji id=5775887550262546277>❗️</emoji> <b>Module name required</b></blockquote>")
     
     name = args[0].lower()
-    path = next((f"{f}/{name}.py" for f in ["modules", "loaded_modules"] if os.path.exists(f"{f}/{name}.py")), None)
+    path = None
+    for folder in ["modules", "loaded_modules"]:
+        full_path = f"{folder}/{name}.py"
+        if os.path.exists(full_path):
+            path = full_path
+            break
     
     if not path: 
         return await message.edit(f"<blockquote><emoji id=5778527486270770928>❌</emoji> <b>Module <code>{name}</code> not found</b></blockquote>")
     
+    file_name = os.path.basename(path)
     topic_id = message.message_thread_id if message.message_thread_id else None
+    
     await message.delete()
-    await client.send_document(chat_id=message.chat.id, document=path, message_thread_id=topic_id)
+    await client.send_document(
+        chat_id=message.chat.id, 
+        document=path, 
+        caption=f"<blockquote><emoji id=5877468380125990242>➡️</emoji> <b>File:</b> <code>{file_name}</code></blockquote>",
+        message_thread_id=topic_id
+    )
 
 def register(app, commands, module_name):
     commands["lm"] = {"func": lm_cmd, "module": module_name}
