@@ -17,7 +17,7 @@ def check_reqs(path):
         pass
     return reqs
 
-def load_module(client, name, folder, warnings=None, reqs_list=None):
+def load_module(client, name, folder):
     path = os.path.abspath(os.path.join(folder, f"{name}.py"))
     if not os.path.exists(path):
         return False
@@ -29,8 +29,6 @@ def load_module(client, name, folder, warnings=None, reqs_list=None):
         except ImportError:
             try:
                 subprocess.check_call([sys.executable, "-m", "pip", "install", req])
-                if reqs_list is not None:
-                    reqs_list.append(req)
             except:
                 pass
 
@@ -55,15 +53,20 @@ def load_module(client, name, folder, warnings=None, reqs_list=None):
     return False
 
 def load_all(client):
-    if not hasattr(client, "meta_data"):
-        client.meta_data = {}
-    if not os.path.exists("loaded_modules"):
-        os.makedirs("loaded_modules")
-    for folder in ["modules", "loaded_modules"]:
-        if not os.path.exists(folder): continue
-        for file in os.listdir(folder):
+    client.meta_data = {}
+    client.loaded_modules = set()
+    
+    base_path = os.getcwd()
+    for folder_name in ["modules", "loaded_modules"]:
+        folder_path = os.path.join(base_path, folder_name)
+        if not os.path.exists(folder_path):
+            os.makedirs(folder_path, exist_ok=True)
+            continue
+            
+        for file in os.listdir(folder_path):
             if file.endswith(".py") and not file.startswith("__"):
-                load_module(client, file[:-3].lower(), folder)
+                module_name = file[:-3].lower()
+                load_module(client, module_name, folder_path)
 
 def is_protected(name):
-    return os.path.exists(f"modules/{name.lower()}.py")
+    return os.path.exists(os.path.join("modules", f"{name.lower()}.py"))
