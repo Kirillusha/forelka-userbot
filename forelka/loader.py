@@ -1,63 +1,69 @@
-import importlib.util
 import os
+import importlib.util
 import sys
 import subprocess
-import traceback
-
-def is_protected(name):
-    return name in ["loader", "main", "owners", "alias"] or os.path.exists(f"modules/{name}.py")
 
 def check_reqs(path):
-    installed = []
-    with open(path, "r", encoding="utf-8") as f:
-        content = f.read()
-    for line in content.splitlines():
-        if line.strip().startswith(("# requirements:", "# req:")):
-            libs = line.split(":", 1)[1].strip().split()
-            for lib in libs:
-                try: 
-                    subprocess.check_call([sys.executable, "-m", "pip", "install", lib])
-                    installed.append(lib)
-                except: pass
-    return installed
-
-def get_full_meta(path):
-    meta = {"developer": "Unknown", "description": "No description provided.", "version": "1.0"}
-    if not os.path.exists(path): return meta
-    with open(path, "r", encoding="utf-8") as f:
-        for line in f:
-            if line.startswith("# meta"):
-                parts = line.replace("# meta", "").strip().split(":", 1)
-                if len(parts) == 2:
-                    meta[parts[0].strip().lower()] = parts[1].strip()
-    return meta
-
-def load_module(app, name, folder, warnings=None, reqs_out=None):
-    path = os.path.abspath(os.path.join(folder, f"{name}.py"))
+    if not path or not os.path.isfile(path):
+        return []
+    reqs = []
     try:
-        reqs = check_reqs(path)
-        if reqs_out is not None: reqs_out.extend(reqs)
-        if name in sys.modules: del sys.modules[name]
+        with open(path, "r", encoding="utf-8") as f:
+            for line in f:
+                if line.startswith("# scope: pip: ") or line.startswith("# requirements: "):
+                    parts = line.split(":", 1)[1].strip().split()
+                    reqs.extend(parts)
+    except:
+        pass
+    return reqs
+
+def load_module(client, name, folder, warnings=None, reqs_list=None):
+    path = os.path.abspath(os.path.join(folder, f"{name}.py"))
+    if not os.path.exists(path):
+        return False
+
+    reqs = check_reqs(path)
+    for req in reqs:
+        try:
+            importlib.import_module(req)
+        except ImportError:
+            try:
+                subprocess.check_call([sys.executable, "-m", "pip", "install", req])
+                if reqs_list is not None:
+                    reqs_list.append(req)
+            except:
+                pass
+
+    try:
         spec = importlib.util.spec_from_file_location(name, path)
+        if spec is None or spec.loader is None:
+            return False
         mod = importlib.util.module_from_spec(spec)
-        sys.modules[name] = mod
         spec.loader.exec_module(mod)
-        reg = getattr(mod, "register", None)
-        if reg:
-            temp_commands = {}
-            reg(app, temp_commands, name)
-            for cmd_name, cmd_data in temp_commands.items():
-                app.commands[cmd_name] = cmd_data
-            if not hasattr(app, "meta_data"): app.meta_data = {}
-            app.meta_data[name] = get_full_meta(path)
-            app.loaded_modules.add(name)
+        if hasattr(mod, "register"):
+            mod.register(client, client.commands, name)
+            client.loaded_modules.add(name)
+            client.meta_data[name] = {
+                "developer": getattr(mod, "__developer__", "Unknown"),
+                "version": getattr(mod, "__version__", "1.0"),
+                "description": getattr(mod, "__description__", "No description")
+            }
             return True
-    except: print(traceback.format_exc())
+    except Exception as e:
+        print(f"Error loading {name}: {e}")
+        return False
     return False
 
-def load_all(app):
+def load_all(client):
+    if not hasattr(client, "meta_data"):
+        client.meta_data = {}
+    if not os.path.exists("loaded_modules"):
+        os.makedirs("loaded_modules")
     for folder in ["modules", "loaded_modules"]:
-        if not os.path.exists(folder): os.makedirs(folder)
+        if not os.path.exists(folder): continue
         for file in os.listdir(folder):
-            if file.endswith(".py") and file != "__init__.py":
-                load_module(app, file[:-3], folder)
+            if file.endswith(".py") and not file.startswith("__"):
+                load_module(client, file[:-3].lower(), folder)
+
+def is_protected(name):
+    return os.path.exists(f"modules/{name.lower()}.py")
