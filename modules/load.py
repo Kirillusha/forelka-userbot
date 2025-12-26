@@ -5,29 +5,38 @@ from forelka import loader
 async def lm_cmd(client, message, args):
     if message.reply_to_message and message.reply_to_message.document:
         doc = message.reply_to_message.document
+        if not doc.file_name.endswith(".py"):
+            return await message.edit("<blockquote><emoji id=5778527486270770928>❌</emoji> <b>This is not a python file</b></blockquote>")
+            
         name = doc.file_name[:-3].lower()
         
         if loader.is_protected(name): 
-            return await message.edit("<blockquote><emoji id=5778527486270770928>❌</emoji> <b>Module is protected</b></blockquote>")
+            return await message.edit("<blockquote><emoji id=5778527486270770928>❌</emoji> <b>System module cannot be modified</b></blockquote>")
         
         path = f"loaded_modules/{name}.py"
         await message.edit(f"<blockquote><emoji id=5891211339170326418>⌛️</emoji> <b>Installing <code>{name}</code>...</b></blockquote>")
         
+        if not os.path.exists("loaded_modules"):
+            os.makedirs("loaded_modules")
+            
         await client.download_media(message.reply_to_message, file_name=path)
         warnings, reqs = [], []
         
-        if loader.load_module(client, name, "loaded_modules", warnings, reqs):
-            m = client.meta_data.get(name, {})
-            stk = "<emoji id=5877468380125990242>➡️</emoji>"
-            r_txt = "\n" + "\n".join([f"{stk} <code>{r}</code> installed" for r in reqs]) if reqs else ""
-            
-            res = (f"<blockquote><emoji id=5776375003280838798>✅</emoji> <b>Module <code>{name}</code> installed!</b>\n\n"
-                   f"<emoji id=5771887475421090729>👤</emoji> <b>Dev:</b> {m.get('developer')}\n"
-                   f"{stk} <b>Ver:</b> <code>{m.get('version')}</code>\n"
-                   f"<emoji id=5775887550262546277>❗️</emoji> <b>Info:</b> <i>{m.get('description')}</i>{r_txt}</blockquote>")
-            await message.edit(res)
-        else: 
-            await message.edit("<blockquote><emoji id=5778527486270770928>❌</emoji> <b>Load failed</b></blockquote>")
+        try:
+            if loader.load_module(client, name, "loaded_modules", warnings, reqs):
+                m = client.meta_data.get(name, {})
+                stk = "<emoji id=5877468380125990242>➡️</emoji>"
+                r_txt = "\n" + "\n".join([f"{stk} <code>{r}</code> installed" for r in reqs]) if reqs else ""
+                
+                res = (f"<blockquote><emoji id=5776375003280838798>✅</emoji> <b>Module <code>{name}</code> installed!</b>\n\n"
+                       f"<emoji id=5771887475421090729>👤</emoji> <b>Dev:</b> {m.get('developer', 'Unknown')}\n"
+                       f"{stk} <b>Ver:</b> <code>{m.get('version', '1.0')}</code>\n"
+                       f"<emoji id=5775887550262546277>❗️</emoji> <b>Info:</b> <i>{m.get('description', 'No description')}</i>{r_txt}</blockquote>")
+                await message.edit(res)
+            else: 
+                await message.edit("<blockquote><emoji id=5778527486270770928>❌</emoji> <b>Load failed (Check logs)</b></blockquote>")
+        except Exception as e:
+            await message.edit(f"<blockquote><emoji id=5778527486270770928>❌</emoji> <b>Error:</b> <code>{str(e)}</code></blockquote>")
     else:
         mods = ", ".join([f"<code>{x}</code>" for x in sorted(client.loaded_modules)])
         await message.edit(f"<blockquote><emoji id=5877468380125990242>➡️</emoji> <b>Loaded modules:</b>\n\n{mods}</blockquote>")
@@ -38,7 +47,7 @@ async def dlm_cmd(client, message, args):
     
     url, name = args[0], args[1].lower()
     if loader.is_protected(name): 
-        return await message.edit("<blockquote><emoji id=5778527486270770928>❌</emoji> <b>Module is protected</b></blockquote>")
+        return await message.edit("<blockquote><emoji id=5778527486270770928>❌</emoji> <b>System module cannot be modified</b></blockquote>")
     
     path = f"loaded_modules/{name}.py"
     try:
@@ -60,7 +69,7 @@ async def ulm_cmd(client, message, args):
     
     name = args[0].lower()
     if loader.is_protected(name): 
-        return await message.edit("<blockquote><emoji id=5778527486270770928>❌</emoji> <b>Module is protected</b></blockquote>")
+        return await message.edit("<blockquote><emoji id=5778527486270770928>❌</emoji> <b>System module cannot be modified</b></blockquote>")
     
     path = f"loaded_modules/{name}.py"
     if os.path.exists(path):
