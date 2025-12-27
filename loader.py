@@ -1,4 +1,3 @@
-
 import importlib.util
 import os
 import sys
@@ -372,42 +371,6 @@ def load_all(app):
     )
     app.loaded_modules.add("loader")
 
-    for d in ["modules", "loaded_modules"]:
-        if not os.path.exists(d):
-            os.makedirs(d)
-        for f in sorted(os.listdir(d)):
-            if f.endswith(".py") and not f.startswith("_"):
-                load_module(app, f[:-3], d)
-```        reg = getattr(mod, "register", None)
-        if reg:
-            sig = inspect.signature(reg)
-            if len(sig.parameters) == 3:
-                reg(app, app.commands, name)
-            else:
-                reg(app, app.commands)
-            app.loaded_modules.add(name)
-            return True
-    except:
-        return False
-    return False
-
-def unload_module(app, name):
-    to_pop = [k for k, v in list(app.commands.items()) if v.get("module") == name]
-    for k in to_pop:
-        app.commands.pop(k)
-    app.loaded_modules.discard(name)
-    if name in sys.modules:
-        del sys.modules[name]
-
-def load_all(app):
-    app.commands.update({
-        "dlm": {"func": dlm_cmd, "module": "loader"},
-        "lm":  {"func": lm_cmd,  "module": "loader"},
-        "ulm": {"func": ulm_cmd, "module": "loader"},
-        "ml":  {"func": ml_cmd,  "module": "loader"}
-    })
-    app.loaded_modules.add("loader")
-    
     for d in ["modules", "loaded_modules"]:
         if not os.path.exists(d):
             os.makedirs(d)
