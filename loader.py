@@ -35,15 +35,39 @@ def save_repos(repos):
         pass
 
 
+def build_github_raw_url(repo_url, module_name):
+    url = repo_url.rstrip("/")
+    if "github.com" not in url:
+        return None
+    if "raw.githubusercontent.com" in url:
+        base = url
+    else:
+        if url.endswith(".git"):
+            url = url[:-4]
+        parts = url.split("github.com/")[-1].split("/")
+        if len(parts) < 2:
+            return None
+        owner, repo = parts[0], parts[1]
+        branch = "main"
+        path = ""
+        if len(parts) > 2:
+            path = "/".join(parts[2:])
+        base = f"https://raw.githubusercontent.com/{owner}/{repo}/{branch}"
+        if path:
+            base += f"/{path.strip('/')}"
+    return f"{base.rstrip('/')}/{module_name}.py"
+
+
 def find_in_repos(module_name):
     repos = load_repos()
-    for base in repos:
-        base = base.rstrip("/")
-        url = f"{base}/{module_name}.py"
+    for repo in repos:
+        raw_url = build_github_raw_url(repo, module_name)
+        if not raw_url:
+            continue
         try:
-            r = requests.get(url, timeout=7)
+            r = requests.get(raw_url, timeout=10)
             if r.ok and r.content:
-                return url, r.content
+                return raw_url, r.content
         except:
             continue
     return None, None
@@ -61,7 +85,11 @@ async def dlm_cmd(client, message, args):
 
     if target.startswith("http://") or target.startswith("https://"):
         url = target
-        name = os.path.splitext(os.path.basename(url.split("?")[0]))[0].lower() or "module"
+        base_name = os.path.basename(url.split("?")[0])
+        if base_name.endswith(".py"):
+            name = base_name[:-3].lower()
+        else:
+            name = base_name.lower() or "module"
         if is_protected(name):
             return await message.edit(
                 "<blockquote><emoji id=5778527486270770928>❌</emoji> <b>Access Denied</b></blockquote>",
@@ -73,7 +101,7 @@ async def dlm_cmd(client, message, args):
             parse_mode=ParseMode.HTML,
         )
         try:
-            r = requests.get(url, timeout=10)
+            r = requests.get(url, timeout=15)
             r.raise_for_status()
             with open(path, "wb") as f:
                 f.write(r.content)
@@ -110,7 +138,7 @@ async def dlm_cmd(client, message, args):
     url, content = find_in_repos(name)
     if not content:
         return await message.edit(
-            "<blockquote><emoji id=5778527486270770928>❌</emoji> <b>Module not found in repos</b></blockquote>",
+            "<blockquote><emoji id=5778527486270770928>❌</emoji> <b>Module not found in GitHub repos</b></blockquote>",
             parse_mode=ParseMode.HTML,
         )
 
@@ -121,7 +149,8 @@ async def dlm_cmd(client, message, args):
 
         if load_module(client, name, "loaded_modules"):
             await message.edit(
-                f"<blockquote><emoji id=5776375003280838798>✅</emoji> <b>Module {name} installed</b></blockquote>",
+                f"<blockquote><emoji id=5776375003280838798>✅</emoji> <b>Module {name} installed</b>\n"
+                f"<code>{url}</code></blockquote>",
                 parse_mode=ParseMode.HTML,
             )
         else:
@@ -244,14 +273,14 @@ async def addrepo_cmd(client, message, args):
     if not args:
         return await message.edit(
             "<blockquote><emoji id=5775887550262546277>❗️</emoji> "
-            "<b>Usage:</b> <code>.addrepo [url]</code></blockquote>",
+            "<b>Usage:</b> <code>.addrepo [github-url]</code></blockquote>",
             parse_mode=ParseMode.HTML,
         )
 
     url = args[0].strip()
-    if not (url.startswith("http://") or url.startswith("https://")):
+    if not (url.startswith("http://") or url.startswith("https://")) or "github.com" not in url:
         return await message.edit(
-            "<blockquote><emoji id=5778527486270770928>❌</emoji> <b>Bad url</b></blockquote>",
+            "<blockquote><emoji id=5778527486270770928>❌</emoji> <b>GitHub url only</b></blockquote>",
             parse_mode=ParseMode.HTML,
         )
 
