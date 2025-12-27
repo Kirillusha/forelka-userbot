@@ -405,7 +405,8 @@ def load_all(app):
             os.makedirs(d)
         for f in sorted(os.listdir(d)):
             if f.endswith(".py") and not f.startswith("_"):
-                load_module(app, f[:-3], d)        try:
+                load_module(app, f[:-3], d)       
+                try:
             r = requests.get(url, timeout=15)
             r.raise_for_status()
             with open(path, "wb") as f:
