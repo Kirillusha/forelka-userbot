@@ -2,17 +2,19 @@ import os
 import json
 import time
 import subprocess
-import psutil
 from pyrogram.enums import ParseMode
 
-# Сохраним время старта бота
-START_TIME = time.time()
+try:
+    import psutil
+    HAS_PSUTIL = True
+except:
+    HAS_PSUTIL = False
 
 async def info_cmd(client, message, args):
     """Информация о юзерботе"""
     
     # Получаем информацию о владельце
-    me = await client.get_me()
+    me = client.me
     owner_name = f"{me.first_name or ''} {me.last_name or ''}".strip()
     if not owner_name:
         owner_name = "Unknown"
@@ -37,7 +39,8 @@ async def info_cmd(client, message, args):
         branch = "unknown"
     
     # Считаем uptime
-    uptime_seconds = int(time.time() - START_TIME)
+    start_time = getattr(client, 'start_time', time.time())
+    uptime_seconds = int(time.time() - start_time)
     days, remainder = divmod(uptime_seconds, 86400)
     hours, remainder = divmod(remainder, 3600)
     minutes, seconds = divmod(remainder, 60)
@@ -53,10 +56,16 @@ async def info_cmd(client, message, args):
     uptime_str = " ".join(uptime_parts)
     
     # Получаем использование RAM текущим процессом
-    process = psutil.Process()
-    ram_usage_bytes = process.memory_info().rss
-    ram_usage_mb = ram_usage_bytes / (1024 * 1024)
-    ram_usage_str = f"{ram_usage_mb:.1f} MB"
+    if HAS_PSUTIL:
+        try:
+            process = psutil.Process()
+            ram_usage_bytes = process.memory_info().rss
+            ram_usage_mb = ram_usage_bytes / (1024 * 1024)
+            ram_usage_str = f"{ram_usage_mb:.1f} MB"
+        except:
+            ram_usage_str = "N/A"
+    else:
+        ram_usage_str = "N/A"
     
     # Получаем имя хоста
     try:
@@ -66,28 +75,28 @@ async def info_cmd(client, message, args):
     
     # Формируем сообщение
     text = f"""<blockquote>
-<emoji document_id=5461117441612462242>🔥</emoji> Forelka Userbot
+<emoji id=5461117441612462242>🔥</emoji> Forelka Userbot
 <blockquote>
 
 <blockquote>
-<emoji document_id=5879770735999717115>👤</emoji> Владелец: {owner_name}
+<emoji id=5879770735999717115>👤</emoji> Владелец: {owner_name}
 </blockquote>
 
 <blockquote>
-<emoji document_id=5778423822940114949>🌿</emoji> Branch: {branch}
+<emoji id=5778423822940114949>🌿</emoji> Branch: {branch}
 </blockquote>
 
 <blockquote>
-<emoji document_id=5877396173135811032>⚙️</emoji> Prefix: «{prefix}»
+<emoji id=5877396173135811032>⚙️</emoji> Prefix: «{prefix}»
 
-<emoji document_id=5778550614669660455>⏱</emoji> Uptime: {uptime_str}
+<emoji id=5778550614669660455>⏱</emoji> Uptime: {uptime_str}
 </blockquote>
 
 
 <blockquote>
-<emoji document_id=5936130851635990622>💾</emoji> RAM usage: {ram_usage_str}
+<emoji id=5936130851635990622>💾</emoji> RAM usage: {ram_usage_str}
 
-<emoji document_id=5870982283724328568>🖥</emoji> Host: {hostname}
+<emoji id=5870982283724328568>🖥</emoji> Host: {hostname}
 </blockquote>
 </blockquote>"""
     
