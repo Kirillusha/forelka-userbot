@@ -3,6 +3,7 @@ import os
 import json
 import sys
 import subprocess
+import time
 
 from pyrogram import Client
 from pyrogram import idle
@@ -81,6 +82,7 @@ async def main():
     client.add_handler(MessageHandler(handler, filters.me & filters.text))
 
     await client.start()
+    client.start_time = time.time()
     loader.load_all(client)
 
     git = "unknown"
