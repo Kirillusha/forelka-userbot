@@ -172,3 +172,12 @@ cython_debug/
 
 # PyPI configuration file
 .pypirc
+
+# Forelka Userbot
+*.session
+*.session-journal
+forelka.log
+forelka.db
+config-*.json
+loaded_modules/
+repositories/
