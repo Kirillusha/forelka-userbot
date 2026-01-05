@@ -1,4 +1,3 @@
-
 import os
 import json
 import time
@@ -11,30 +10,22 @@ try:
 except:
     HAS_PSUTIL = False
 
-# URL изображения для превью (измените на свою ссылку)
-IMAGE_URL = "https://raw.githubusercontent.com/coddrago/assets/refs/heads/main/codrago/banner_misa.png"
-
 async def info_cmd(client, message, args):
     """Информация о юзерботе"""
-    
-    # Получаем информацию о владельце
     me = client.me
     owner_name = f"{me.first_name or ''} {me.last_name or ''}".strip()
     if not owner_name:
         owner_name = "Unknown"
-    
-    # Получаем текущий префикс
+
     path = f"config-{me.id}.json"
     prefix = "."
     if os.path.exists(path):
         try:
             with open(path, "r") as f:
-                cfg = json.load(f)
-                prefix = cfg.get("prefix", ".")
+                prefix = json.load(f).get("prefix", ".")
         except:
             pass
     
-    # Получаем текущую ветку git
     try:
         branch = subprocess.check_output(
             ["git", "rev-parse", "--abbrev-ref", "HEAD"],
@@ -42,8 +33,7 @@ async def info_cmd(client, message, args):
         ).decode().strip()
     except:
         branch = "unknown"
-    
-    # Считаем uptime
+
     start_time = getattr(client, 'start_time', time.time())
     uptime_seconds = int(time.time() - start_time)
     days, remainder = divmod(uptime_seconds, 86400)
@@ -59,8 +49,7 @@ async def info_cmd(client, message, args):
         uptime_parts.append(f"{minutes}м")
     uptime_parts.append(f"{seconds}с")
     uptime_str = " ".join(uptime_parts)
-    
-    # Получаем использование RAM текущим процессом
+
     if HAS_PSUTIL:
         try:
             process = psutil.Process()
@@ -72,15 +61,12 @@ async def info_cmd(client, message, args):
     else:
         ram_usage_str = "N/A"
     
-    # Получаем имя хоста
     try:
         hostname = subprocess.check_output(["hostname"]).decode().strip()
     except:
         hostname = os.uname().nodename if hasattr(os, 'uname') else "Unknown"
     
-    # Формируем сообщение с невидимой ссылкой для превью
-    # Используем invisible character + ссылка для генерации превью
-    text = f"""<a href="{IMAGE_URL}">&#8203;</a><blockquote><emoji id=5461117441612462242>🔥</emoji> Forelka Userbot</blockquote>
+    text = f"""<blockquote><emoji id=5461117441612462242>🔥</emoji> Forelka Userbot</blockquote>
 
 <blockquote><emoji id=5879770735999717115>👤</emoji> Владелец: {owner_name}</blockquote>
 
@@ -92,9 +78,9 @@ async def info_cmd(client, message, args):
 <blockquote><emoji id=5936130851635990622>💾</emoji> RAM usage: {ram_usage_str}
 <emoji id=5870982283724328568>🖥</emoji> Host: {hostname}</blockquote>"""
     
-    # Отправляем с включенным link preview
-    await message.edit(text, parse_mode=ParseMode.HTML, disable_web_page_preview=False)
+    await message.edit(text, parse_mode=ParseMode.HTML)
 
 def register(app, commands, module_name):
     """Регистрация команды"""
     commands["info"] = {"func": info_cmd, "module": module_name}
+
