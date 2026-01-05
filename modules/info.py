@@ -54,7 +54,7 @@ async def info_cmd(client, message, args):
     prefix = config.get("prefix", ".")
     quote_media = config.get("info_quote_media", False)
     banner_url = config.get("info_banner_url", "")
-    invert_media = config.get("info_invert_media", False)
+    invert_media = config.get("info_invert_media", True)  # True = превью СВЕРХУ
     
     # Получаем текущую ветку git
     try:
@@ -130,7 +130,7 @@ async def info_cmd(client, message, args):
             # Используем невидимую ссылку с пробелом (работает в некоторых клиентах)
             text_with_preview = f'<a href="{banner_url}">&#8288;</a>\n{info_text}'
             
-            # Пробуем использовать link_preview_options если доступен
+            # Пробуем использовать link_preview_options + invert_media
             try:
                 await client.send_message(
                     chat_id=message.chat.id,
@@ -139,7 +139,11 @@ async def info_cmd(client, message, args):
                     disable_web_page_preview=False,
                     reply_to_message_id=reply_to,
                     message_thread_id=thread_id,
-                    link_preview_options={"is_disabled": False, "prefer_large_media": True, "show_above_text": True}
+                    link_preview_options={
+                        "is_disabled": False, 
+                        "prefer_large_media": True, 
+                        "show_above_text": invert_media
+                    }
                 )
             except:
                 # Fallback без link_preview_options
@@ -201,22 +205,54 @@ async def setinfobanner_cmd(client, message, args):
     if not args:
         quote_media = config.get("info_quote_media", False)
         banner_url = config.get("info_banner_url", "не установлен")
+        invert_media = config.get("info_invert_media", True)
         
         return await message.edit(
             f"<blockquote><emoji id=5897962422169243693>👻</emoji> <b>Info Banner Settings</b>\n\n"
             f"<b>Quote Media:</b> <code>{'✅ Enabled' if quote_media else '❌ Disabled'}</code>\n"
+            f"<b>Invert Media:</b> <code>{'✅ ON (превью сверху)' if invert_media else '❌ OFF (превью снизу)'}</code>\n"
             f"<b>Banner URL:</b> <code>{banner_url}</code>\n\n"
             f"<b>Команды:</b>\n"
             f"<code>.setinfobanner [url]</code> - установить URL баннера\n"
-            f"<code>.setinfobanner quote [on/off]</code> - включить/выключить quote media\n"
-            f"<code>.setinfobanner clear</code> - удалить баннер</blockquote>",
+            f"<code>.setinfobanner quote [on/off]</code> - quote media режим\n"
+            f"<code>.setinfobanner invert [on/off]</code> - превью сверху/снизу\n"
+            f"<code>.setinfobanner clear</code> - удалить настройки</blockquote>",
             parse_mode=ParseMode.HTML
         )
     
     # Обработка команд
     cmd = args[0].lower()
     
-    if cmd == "quote":
+    if cmd == "invert":
+        # Включение/выключение invert_media
+        if len(args) < 2:
+            return await message.edit(
+                "<blockquote><emoji id=5775887550262546277>❗️</emoji> <b>Usage:</b> <code>.setinfobanner invert [on/off]</code></blockquote>",
+                parse_mode=ParseMode.HTML
+            )
+        
+        state = args[1].lower()
+        if state in ["on", "true", "1", "да", "yes"]:
+            config["info_invert_media"] = True
+            status = "✅ Включен (превью СВЕРХУ)"
+        elif state in ["off", "false", "0", "нет", "no"]:
+            config["info_invert_media"] = False
+            status = "❌ Выключен (превью СНИЗУ)"
+        else:
+            return await message.edit(
+                "<blockquote><emoji id=5778527486270770928>❌</emoji> <b>Неверное значение. Используйте:</b> <code>on</code> или <code>off</code></blockquote>",
+                parse_mode=ParseMode.HTML
+            )
+        
+        with open(config_path, "w") as f:
+            json.dump(config, f, indent=4)
+        
+        await message.edit(
+            f"<blockquote><emoji id=5776375003280838798>✅</emoji> <b>Invert Media {status}</b></blockquote>",
+            parse_mode=ParseMode.HTML
+        )
+    
+    elif cmd == "quote":
         # Включение/выключение quote media
         if len(args) < 2:
             return await message.edit(
@@ -292,4 +328,4 @@ async def setinfobanner_cmd(client, message, args):
 def register(app, commands, module_name):
     """Регистрация команд"""
     commands["info"] = {"func": info_cmd, "module": module_name}
-    commands["setinfobanner"] = {"func": setinfobanner_cmd, "module": module_name} 
+    commands["setinfobanner"] = {"func": setinfobanner_cmd, "module": module_name}
