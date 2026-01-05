@@ -96,31 +96,45 @@ async def info_cmd(client, message, args):
     # Если есть URL изображения, отправляем с фото
     if image_url:
         try:
+            # Редактируем сообщение на загрузку
+            await message.edit("<blockquote><emoji id=5891211339170326418>⌛️</emoji> <b>Загрузка...</b></blockquote>", parse_mode=ParseMode.HTML)
+            
             # Скачиваем изображение
             image_path = "temp_info_image.jpg"
             response = requests.get(image_url, timeout=10)
+            
             if response.status_code == 200:
                 with open(image_path, "wb") as f:
                     f.write(response.content)
                 
-                # Удаляем старое сообщение и отправляем новое с фото
+                # Удаляем сообщение с загрузкой
                 await message.delete()
+                
+                # Отправляем фото с текстом (фото будет сверху, текст снизу)
                 await client.send_photo(
-                    message.chat.id,
-                    image_path,
+                    chat_id=message.chat.id,
+                    photo=image_path,
                     caption=text,
                     parse_mode=ParseMode.HTML
                 )
                 
                 # Удаляем временный файл
-                if os.path.exists(image_path):
+                try:
                     os.remove(image_path)
+                except:
+                    pass
             else:
                 # Если не удалось загрузить, просто отправляем текст
                 await message.edit(text, parse_mode=ParseMode.HTML)
-        except:
-            # Если произошла ошибка, просто отправляем текст
-            await message.edit(text, parse_mode=ParseMode.HTML)
+        except Exception as e:
+            # Если произошла ошибка, отправляем текст с ошибкой для отладки
+            try:
+                await message.edit(
+                    f"{text}\n\n<blockquote><emoji id=5778527486270770928>❌</emoji> <b>Ошибка загрузки изображения:</b> <code>{str(e)}</code></blockquote>",
+                    parse_mode=ParseMode.HTML
+                )
+            except:
+                await message.edit(text, parse_mode=ParseMode.HTML)
     else:
         # Без изображения
         await message.edit(text, parse_mode=ParseMode.HTML)
@@ -166,16 +180,24 @@ async def setinfoimg_cmd(client, message, args):
     new_url = args[0]
     
     # Проверяем доступность изображения
+    await message.edit("<blockquote><emoji id=5891211339170326418>⌛️</emoji> <b>Проверка изображения...</b></blockquote>", parse_mode=ParseMode.HTML)
     try:
-        response = requests.head(new_url, timeout=5)
+        response = requests.get(new_url, timeout=10, stream=True)
         if response.status_code != 200:
             return await message.edit(
-                "<blockquote><emoji id=5778527486270770928>❌</emoji> <b>Не удалось загрузить изображение по этой ссылке</b></blockquote>",
+                f"<blockquote><emoji id=5778527486270770928>❌</emoji> <b>Не удалось загрузить изображение</b>\n\n<b>Код:</b> <code>{response.status_code}</code></blockquote>",
                 parse_mode=ParseMode.HTML
             )
-    except:
+        # Проверяем, что это действительно изображение
+        content_type = response.headers.get('content-type', '')
+        if 'image' not in content_type.lower():
+            return await message.edit(
+                f"<blockquote><emoji id=5778527486270770928>❌</emoji> <b>Это не изображение</b>\n\n<b>Type:</b> <code>{content_type}</code></blockquote>",
+                parse_mode=ParseMode.HTML
+            )
+    except Exception as e:
         return await message.edit(
-            "<blockquote><emoji id=5778527486270770928>❌</emoji> <b>Не удалось проверить ссылку</b></blockquote>",
+            f"<blockquote><emoji id=5778527486270770928>❌</emoji> <b>Ошибка проверки:</b> <code>{str(e)}</code></blockquote>",
             parse_mode=ParseMode.HTML
         )
     
