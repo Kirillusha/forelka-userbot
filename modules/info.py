@@ -12,14 +12,11 @@ except:
 
 async def info_cmd(client, message, args):
     """Информация о юзерботе"""
-    
-    # Получаем информацию о владельце
     me = client.me
     owner_name = f"{me.first_name or ''} {me.last_name or ''}".strip()
     if not owner_name:
         owner_name = "Unknown"
-    
-    # Получаем текущий префикс
+
     path = f"config-{me.id}.json"
     prefix = "."
     if os.path.exists(path):
@@ -29,7 +26,6 @@ async def info_cmd(client, message, args):
         except:
             pass
     
-    # Получаем текущую ветку git
     try:
         branch = subprocess.check_output(
             ["git", "rev-parse", "--abbrev-ref", "HEAD"],
@@ -37,8 +33,7 @@ async def info_cmd(client, message, args):
         ).decode().strip()
     except:
         branch = "unknown"
-    
-    # Считаем uptime
+
     start_time = getattr(client, 'start_time', time.time())
     uptime_seconds = int(time.time() - start_time)
     days, remainder = divmod(uptime_seconds, 86400)
@@ -54,8 +49,7 @@ async def info_cmd(client, message, args):
         uptime_parts.append(f"{minutes}м")
     uptime_parts.append(f"{seconds}с")
     uptime_str = " ".join(uptime_parts)
-    
-    # Получаем использование RAM текущим процессом
+
     if HAS_PSUTIL:
         try:
             process = psutil.Process()
@@ -67,41 +61,26 @@ async def info_cmd(client, message, args):
     else:
         ram_usage_str = "N/A"
     
-    # Получаем имя хоста
     try:
         hostname = subprocess.check_output(["hostname"]).decode().strip()
     except:
         hostname = os.uname().nodename if hasattr(os, 'uname') else "Unknown"
     
-    # Формируем сообщение
-    text = f"""<blockquote>
-<emoji id=5461117441612462242>🔥</emoji> Forelka Userbot
-<blockquote>
+    text = f"""<blockquote><emoji id=5461117441612462242>🔥</emoji> Forelka Userbot</blockquote>
 
-<blockquote>
-<emoji id=5879770735999717115>👤</emoji> Владелец: {owner_name}
-</blockquote>
+<blockquote><emoji id=5879770735999717115>👤</emoji> Владелец: {owner_name}</blockquote>
 
-<blockquote>
-<emoji id=5778423822940114949>🌿</emoji> Branch: {branch}
-</blockquote>
+<blockquote><emoji id=5778423822940114949>🌿</emoji> Branch: {branch}</blockquote>
 
-<blockquote>
-<emoji id=5877396173135811032>⚙️</emoji> Prefix: «{prefix}»
+<blockquote><emoji id=5877396173135811032>⚙️</emoji> Prefix: «{prefix}»
+<emoji id=5778550614669660455>⏱</emoji> Uptime: {uptime_str}</blockquote>
 
-<emoji id=5778550614669660455>⏱</emoji> Uptime: {uptime_str}
-</blockquote>
-
-
-<blockquote>
-<emoji id=5936130851635990622>💾</emoji> RAM usage: {ram_usage_str}
-
-<emoji id=5870982283724328568>🖥</emoji> Host: {hostname}
-</blockquote>
-</blockquote>"""
+<blockquote><emoji id=5936130851635990622>💾</emoji> RAM usage: {ram_usage_str}
+<emoji id=5870982283724328568>🖥</emoji> Host: {hostname}</blockquote>"""
     
     await message.edit(text, parse_mode=ParseMode.HTML)
 
 def register(app, commands, module_name):
     """Регистрация команды"""
     commands["info"] = {"func": info_cmd, "module": module_name}
+    await message.edit(text, parse_mode=ParseMode.HTML) 
