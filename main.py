@@ -62,6 +62,10 @@ async def handler(c, m):
         except: 
             pass
 
+async def edited_handler(c, m):
+    # Обработчик отредактированных сообщений - работает так же как обычный handler
+    await handler(c, m)
+
 async def main():
     utils.get_peer_type = lambda x: "channel" if str(x).startswith("-100") else ("chat" if x < 0 else "user")
     
@@ -79,7 +83,11 @@ async def main():
 
     client.commands = {}
     client.loaded_modules = set()
+    # Обработчик для обычных сообщений
     client.add_handler(MessageHandler(handler, filters.me & filters.text))
+    # Обработчик для отредактированных сообщений
+    from pyrogram.handlers import EditedMessageHandler
+    client.add_handler(EditedMessageHandler(edited_handler, filters.me & filters.text))
 
     await client.start()
     client.start_time = time.time()
