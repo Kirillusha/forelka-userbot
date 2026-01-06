@@ -6,6 +6,21 @@ from pyrogram.enums import ParseMode
 
 BACKUP_DIR = "backups"
 
+def is_owner(client, user_id):
+    """Проверяет является ли пользователь овнером"""
+    config_path = f"config-{client.me.id}.json"
+    if os.path.exists(config_path):
+        try:
+            with open(config_path, "r") as f:
+                config = json.load(f)
+                owners = config.get("owners", [])
+                if client.me.id not in owners:
+                    owners.append(client.me.id)
+                return user_id in owners
+        except:
+            pass
+    return user_id == client.me.id
+
 def ensure_backup_dir():
     """Создает папку для бекапов если её нет"""
     if not os.path.exists(BACKUP_DIR):
@@ -34,6 +49,13 @@ def get_files_to_backup():
 
 async def backup_cmd(client, message, args):
     """Создает бекап всех данных"""
+    # Проверка прав
+    if not is_owner(client, message.from_user.id):
+        return await message.edit(
+            "<blockquote><emoji id=5778527486270770928>❌</emoji> <b>Доступ запрещен</b></blockquote>",
+            parse_mode=ParseMode.HTML
+        )
+    
     ensure_backup_dir()
     
     await message.edit(
@@ -65,14 +87,26 @@ async def backup_cmd(client, message, args):
         size = os.path.getsize(backup_path)
         size_mb = size / (1024 * 1024)
         
-        await message.edit(
+        # Отправляем бекап файлом
+        await message.delete()
+        
+        caption = (
             f"<blockquote><emoji id=5776375003280838798>✅</emoji> <b>Бекап создан!</b>\n\n"
-            f"<b>Файл:</b> <code>{backup_name}</code>\n"
             f"<b>Размер:</b> <code>{size_mb:.2f} MB</code>\n"
             f"<b>Файлов:</b> <code>{len(files)}</code>\n\n"
-            f"<b>Содержимое:</b>\n<blockquote expandable>" + 
-            "\n".join([f"• <code>{f}</code>" for f in sorted(files)]) +
-            "</blockquote></blockquote>",
+            f"<b>Содержимое:</b>\n" + 
+            "\n".join([f"• <code>{f}</code>" for f in sorted(files)[:10]])
+        )
+        
+        if len(files) > 10:
+            caption += f"\n... и ещё {len(files) - 10} файлов"
+        
+        caption += "</blockquote>"
+        
+        await client.send_document(
+            chat_id=message.chat.id,
+            document=backup_path,
+            caption=caption,
             parse_mode=ParseMode.HTML
         )
         
@@ -84,6 +118,13 @@ async def backup_cmd(client, message, args):
 
 async def restore_cmd(client, message, args):
     """Восстанавливает данные из бекапа"""
+    # Проверка прав
+    if not is_owner(client, message.from_user.id):
+        return await message.edit(
+            "<blockquote><emoji id=5778527486270770928>❌</emoji> <b>Доступ запрещен</b></blockquote>",
+            parse_mode=ParseMode.HTML
+        )
+    
     ensure_backup_dir()
     
     # Получаем список бекапов
@@ -149,6 +190,13 @@ async def restore_cmd(client, message, args):
 
 async def backups_cmd(client, message, args):
     """Показывает список доступных бекапов"""
+    # Проверка прав
+    if not is_owner(client, message.from_user.id):
+        return await message.edit(
+            "<blockquote><emoji id=5778527486270770928>❌</emoji> <b>Доступ запрещен</b></blockquote>",
+            parse_mode=ParseMode.HTML
+        )
+    
     ensure_backup_dir()
     
     backups = [f for f in os.listdir(BACKUP_DIR) if f.startswith("backup_") and f.endswith(".zip")]
@@ -191,6 +239,13 @@ async def backups_cmd(client, message, args):
 
 async def delbackup_cmd(client, message, args):
     """Удаляет бекап"""
+    # Проверка прав
+    if not is_owner(client, message.from_user.id):
+        return await message.edit(
+            "<blockquote><emoji id=5778527486270770928>❌</emoji> <b>Доступ запрещен</b></blockquote>",
+            parse_mode=ParseMode.HTML
+        )
+    
     if not args:
         return await message.edit(
             "<blockquote><emoji id=5775887550262546277>❗️</emoji> <b>Usage:</b> <code>.delbackup [name]</code></blockquote>",
