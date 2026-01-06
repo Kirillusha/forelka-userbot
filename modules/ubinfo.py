@@ -3,7 +3,7 @@ async def ubinfo_cmd(client, message, args):
         "Forelka Userbot\n\n"
         "Channel: @forelkauserbots\n"
         "Modules: @forelkausermodules\n"
-        "Support: @forelusersupport"
+        "Support: @forelka_support"
     )
     await message.edit(text, disable_web_page_preview=True)
 
