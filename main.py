@@ -59,6 +59,10 @@ async def handler(c, m):
     if not m.text: 
         return
     
+    # Проверка что есть from_user (может быть None для каналов)
+    if not m.from_user:
+        return
+    
     # Проверка прав: только владелец или овнеры
     if not is_owner(c, m.from_user.id):
         return
