@@ -38,9 +38,31 @@ class TerminalLogger:
 
 sys.stdout = sys.stderr = TerminalLogger()
 
+def is_owner(client, user_id):
+    """Проверяет является ли пользователь овнером"""
+    path = f"config-{client.me.id}.json"
+    if os.path.exists(path):
+        try:
+            with open(path, "r") as f:
+                config = json.load(f)
+                owners = config.get("owners", [])
+                # Владелец бота всегда овнер
+                if client.me.id not in owners:
+                    owners.append(client.me.id)
+                return user_id in owners
+        except:
+            pass
+    # По умолчанию только владелец
+    return user_id == client.me.id
+
 async def handler(c, m):
     if not m.text: 
         return
+    
+    # Проверка прав: только владелец или овнеры
+    if not is_owner(c, m.from_user.id):
+        return
+    
     path = f"config-{c.me.id}.json"
     pref = "."
     if os.path.exists(path):
@@ -83,11 +105,11 @@ async def main():
 
     client.commands = {}
     client.loaded_modules = set()
-    # Обработчик для обычных сообщений
-    client.add_handler(MessageHandler(handler, filters.me & filters.text))
+    # Обработчик для обычных сообщений (убрали filters.me - проверка внутри handler)
+    client.add_handler(MessageHandler(handler, filters.text))
     # Обработчик для отредактированных сообщений
     from pyrogram.handlers import EditedMessageHandler
-    client.add_handler(EditedMessageHandler(edited_handler, filters.me & filters.text))
+    client.add_handler(EditedMessageHandler(edited_handler, filters.text))
 
     await client.start()
     client.start_time = time.time()
