@@ -2,32 +2,8 @@ import json
 import os
 from pyrogram.enums import ParseMode
 
-def is_owner(client, user_id):
-    """Проверяет является ли пользователь овнером"""
-    config_path = f"config-{client.me.id}.json"
-    if os.path.exists(config_path):
-        try:
-            with open(config_path, "r") as f:
-                config = json.load(f)
-                owners = config.get("owners", [])
-                # Добавляем самого владельца бота
-                if client.me.id not in owners:
-                    owners.append(client.me.id)
-                return user_id in owners
-        except:
-            pass
-    # По умолчанию только владелец бота
-    return user_id == client.me.id
-
 async def addowner_cmd(client, message, args):
     """Добавить овнера"""
-    # Только владелец бота может добавлять овнеров
-    if message.from_user.id != client.me.id:
-        return await message.edit(
-            "<blockquote><emoji id=5778527486270770928>❌</emoji> <b>Доступ запрещен</b>\n\n"
-            "Только владелец бота может управлять овнерами</blockquote>",
-            parse_mode=ParseMode.HTML
-        )
     
     # Проверяем аргументы
     if not args and not message.reply_to_message:
@@ -87,12 +63,6 @@ async def addowner_cmd(client, message, args):
 
 async def delowner_cmd(client, message, args):
     """Удалить овнера"""
-    # Только владелец бота может удалять овнеров
-    if message.from_user.id != client.me.id:
-        return await message.edit(
-            "<blockquote><emoji id=5778527486270770928>❌</emoji> <b>Доступ запрещен</b></blockquote>",
-            parse_mode=ParseMode.HTML
-        )
     
     # Проверяем аргументы
     if not args and not message.reply_to_message:
@@ -156,12 +126,6 @@ async def delowner_cmd(client, message, args):
 
 async def owners_cmd(client, message, args):
     """Список овнеров"""
-    # Только овнеры могут видеть список
-    if not is_owner(client, message.from_user.id):
-        return await message.edit(
-            "<blockquote><emoji id=5778527486270770928>❌</emoji> <b>Доступ запрещен</b></blockquote>",
-            parse_mode=ParseMode.HTML
-        )
     
     # Загружаем конфиг
     config_path = f"config-{client.me.id}.json"
