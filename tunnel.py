@@ -56,6 +56,7 @@ def run_quick_tunnel(local_url: str) -> int:
     url_re = re.compile(r"(https?://[a-zA-Z0-9.-]+\.(?:localhost\.run|lhr\.life))")
 
     last_output = ""
+    quiet = os.environ.get("FORELKA_TUNNEL_QUIET", "").strip() in ("1", "true", "yes", "on")
     for remote in candidates:
         cmd = [
             ssh,
@@ -69,8 +70,9 @@ def run_quick_tunnel(local_url: str) -> int:
             f"80:{host}:{port}",
             remote,
         ]
-        print("Запускаю туннель:", " ".join(cmd))
-        print("Ожидайте URL вида https://....localhost.run (иногда домен lhr.life)")
+        if not quiet:
+            print("Запускаю туннель:", " ".join(cmd))
+            print("Ожидайте URL вида https://....localhost.run (иногда домен lhr.life)")
 
         proc = subprocess.Popen(
             cmd,
@@ -84,12 +86,13 @@ def run_quick_tunnel(local_url: str) -> int:
             assert proc.stdout is not None
             for line in proc.stdout:
                 last_output = (last_output + line)[-8000:]
-                sys.stdout.write(line)
+                if not quiet:
+                    sys.stdout.write(line)
                 m = url_re.search(line)
                 if m:
                     url = m.group(1)
                     if _is_public_tunnel_url(url):
-                        print("\nВаш публичный URL:", url)
+                        print("Ваш публичный URL:", url)
         except KeyboardInterrupt:
             try:
                 proc.terminate()

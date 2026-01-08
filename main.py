@@ -90,28 +90,31 @@ async def _terminal_login_create_session():
 
 def _watch_process_output_for_url(proc: subprocess.Popen, label: str):
     """
-    Читает stdout процесса и печатает его, а при появлении trycloudflare URL — выводит его отдельно.
+    Читает stdout процесса и вытаскивает публичный URL. По умолчанию НЕ спамит stdout,
+    чтобы в терминале было удобно (особенно из-за ASCII QR/баннеров localhost.run).
     Работает в отдельном потоке.
     """
     url_re = re.compile(r"(https?://[a-zA-Z0-9.-]+\.(?:localhost\.run|lhr\.life))")
     found = {"url": None}
+    verbose = os.environ.get("FORELKA_TUNNEL_VERBOSE", "").strip() in ("1", "true", "yes", "on")
 
     def run():
         try:
             if proc.stdout is None:
                 return
             for line in proc.stdout:
-                try:
-                    sys.stdout.write(f"[{label}] {line}")
-                except Exception:
-                    pass
+                if verbose:
+                    try:
+                        sys.stdout.write(f"[{label}] {line}")
+                    except Exception:
+                        pass
                 m = url_re.search(line)
                 if m and not found["url"]:
                     url = m.group(1)
                     if "admin.localhost.run" in url or "localhost.run/docs" in url:
                         continue
                     found["url"] = url
-                    print(f"\n[{label}] Public URL: {found['url']}\n")
+                    print(f"\nPublic URL: {found['url']}\n")
         except Exception:
             pass
 
@@ -129,12 +132,14 @@ async def _web_login_create_session(with_tunnel: bool = False):
 
     host = os.environ.get("FORELKA_WEB_HOST", "127.0.0.1")
     port = os.environ.get("FORELKA_WEB_PORT", "8000")
-    print(f"[web] Starting login panel on http://{host}:{port}")
+    print(f"Web panel: http://{host}:{port}")
 
     # Запускаем отдельным процессом, чтобы можно было корректно остановить после логина
     proc = subprocess.Popen(
         [sys.executable, "webapp.py"],
         env={**os.environ, "FORELKA_WEB_HOST": host, "FORELKA_WEB_PORT": str(port)},
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
     )
 
     tunnel_proc = None
@@ -142,7 +147,13 @@ async def _web_login_create_session(with_tunnel: bool = False):
         try:
             tunnel_proc = subprocess.Popen(
                 [sys.executable, "tunnel.py"],
-                env={**os.environ, "FORELKA_WEB_HOST": host, "FORELKA_WEB_PORT": str(port)},
+                env={
+                    **os.environ,
+                    "FORELKA_WEB_HOST": host,
+                    "FORELKA_WEB_PORT": str(port),
+                    # По умолчанию просим tunnel.py быть тихим (печатает только URL).
+                    "FORELKA_TUNNEL_QUIET": "1",
+                },
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,
                 text=True,
