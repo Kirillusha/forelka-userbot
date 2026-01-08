@@ -2,6 +2,7 @@ import json
 import os
 import time
 import secrets
+import asyncio
 from dataclasses import dataclass
 from typing import Dict, Optional
 
@@ -34,6 +35,17 @@ class LoginState:
 
 _states: Dict[str, LoginState] = {}
 _clients: Dict[str, Client] = {}
+
+def _ensure_event_loop():
+    """
+    Pyrogram (и Python 3.12+) требует event loop в текущем потоке.
+    Flask dev-server часто обрабатывает запросы в Thread-*, где loop не задан.
+    """
+    try:
+        asyncio.get_event_loop()
+    except RuntimeError:
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
 
 
 def _cleanup():
@@ -251,6 +263,7 @@ def create_app() -> Flask:
     @app.post("/start")
     def start():
         _cleanup()
+        _ensure_event_loop()
         try:
             api_id = int(request.form.get("api_id", "").strip())
             api_hash = request.form.get("api_hash", "").strip()
@@ -304,6 +317,7 @@ def create_app() -> Flask:
 
     @app.post("/verify-code")
     def verify_code():
+        _ensure_event_loop()
         token = (request.form.get("token") or "").strip()
         code = (request.form.get("code") or "").strip().replace(" ", "")
         st, c = _get_state_and_client(token)
@@ -325,6 +339,7 @@ def create_app() -> Flask:
 
     @app.post("/verify-password")
     def verify_password():
+        _ensure_event_loop()
         token = (request.form.get("token") or "").strip()
         password = request.form.get("password") or ""
         st, c = _get_state_and_client(token)
@@ -368,5 +383,7 @@ if __name__ == "__main__":
     host = os.environ.get("FORELKA_WEB_HOST", "127.0.0.1")
     port = int(os.environ.get("FORELKA_WEB_PORT", "8000"))
     app = create_app()
-    app.run(host=host, port=port, debug=False)
+    # Важно: threaded=False чтобы один и тот же Pyrogram Client не прыгал между потоками
+    # между шагами (код / 2FA), иначе будут ошибки event loop / thread safety.
+    app.run(host=host, port=port, debug=False, threaded=False)
 
