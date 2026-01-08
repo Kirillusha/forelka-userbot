@@ -111,9 +111,9 @@ INDEX_HTML = """
   <body>
     <div class="wrap">
       <div class="card">
-        <h1>Telegram авторизация (создание сессии)</h1>
-        <p>Этот сайт создаёт рабочую Pyrogram-сессию <code>forelka-&lt;id&gt;.session</code>, которую потом использует ваш юзербот.</p>
-        <p class="muted">API ID / API HASH берутся в <code>my.telegram.org</code>. Они нужны один раз (мы сохраняем их в файл рядом с сессией).</p>
+        <h1>Forelka Autefication</h1>
+        <p>Этот сайт создан для аутентификации сессии<code>forelka-&lt;id&gt;.session</code>, которую потом использует ваш юзербот.</p>
+        <p class="muted">API ID / API HASH берутся в <code>my.telegram.org</code>. Они нужны один раз</p>
 
         {% if error %}<div class="err"><b>Ошибка:</b> {{ error }}</div>{% endif %}
 
@@ -242,7 +242,7 @@ SUCCESS_HTML = """
       <div class="card">
         <h1>Готово</h1>
         <div class="ok"><b>Сессия создана:</b> <code>{{ session_file }}</code></div>
-        <p><b>Следующий шаг:</b> запускайте юзербот как обычно: <code>python main.py</code>.</p>
+        <p><b>Следующий шаг:</b> Ваш юзербот уже запущен,если понадобится вновь запустить его введите: <code>python main.py</code>.</p>
         <p class="muted">API данные сохранены в <code>{{ api_file }}</code>, чтобы запуск мог восстановить клиент при необходимости.</p>
         <p><a href="/">Создать ещё одну сессию</a></p>
       </div>
@@ -386,4 +386,5 @@ if __name__ == "__main__":
     # Важно: threaded=False чтобы один и тот же Pyrogram Client не прыгал между потоками
     # между шагами (код / 2FA), иначе будут ошибки event loop / thread safety.
     app.run(host=host, port=port, debug=False, threaded=False)
+
 
