@@ -34,9 +34,20 @@ class TerminalLogger:
         self.terminal.write(m)
         self.log.write(m)
         self.log.flush()
+        try:
+            self.terminal.flush()
+        except Exception:
+            pass
         
     def flush(self): 
-        pass
+        try:
+            self.log.flush()
+        except Exception:
+            pass
+        try:
+            self.terminal.flush()
+        except Exception:
+            pass
 
 sys.stdout = sys.stderr = TerminalLogger()
 
