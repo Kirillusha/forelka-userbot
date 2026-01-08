@@ -10,7 +10,6 @@ from pyrogram import idle
 from pyrogram import filters
 from pyrogram import utils
 from pyrogram.handlers import MessageHandler
-from pyrogram.handlers import EditedMessageHandler
 
 import loader
 
@@ -39,10 +38,8 @@ class TerminalLogger:
 
 sys.stdout = sys.stderr = TerminalLogger()
 
-APP_CONFIG_API_ID = 17349
-APP_CONFIG_API_HASH = "344583e45741c457fe1862106095a5eb"
-
 def is_owner(client, user_id):
+    """Проверяет является ли пользователь овнером"""
     path = f"config-{client.me.id}.json"
     if os.path.exists(path):
         try:
@@ -55,6 +52,7 @@ def is_owner(client, user_id):
     return False
 
 async def handler(c, m):
+    """Обработчик команд от самого юзербота"""
     if not m.text: 
         return
     path = f"config-{c.me.id}.json"
@@ -75,13 +73,15 @@ async def handler(c, m):
     if cmd in c.commands:
         try: 
             await c.commands[cmd]["func"](c, m, args)
-        except Exception as e: 
-            print(f"Ошибка в команде {cmd}: {e}")
+        except: 
+            pass
 
 async def owner_handler(c, m):
+    """Обработчик команд от овнеров - юзербот выполняет команду от своего имени"""
     if not m.text or not m.from_user:
         return
     
+    # Проверяем что это овнер
     if not is_owner(c, m.from_user.id):
         return
     
@@ -106,12 +106,15 @@ async def owner_handler(c, m):
     
     if cmd in c.commands:
         try:
+            # Юзербот отправляет команду от своего имени
             sent_msg = await c.send_message(m.chat.id, m.text)
+            # Выполняем команду
             await c.commands[cmd]["func"](c, sent_msg, args)
         except Exception as e:
             pass
 
 async def edited_handler(c, m):
+    """Обработчик отредактированных сообщений"""
     await handler(c, m)
 
 async def main():
@@ -121,7 +124,7 @@ async def main():
     if sess: 
         client = Client(sess[:-8])
     else:
-        api_id, api_hash = APP_CONFIG_API_ID, APP_CONFIG_API_HASH
+        api_id, api_hash = input("API ID: "), input("API HASH: ")
         temp = Client("temp", api_id=api_id, api_hash=api_hash)
         await temp.start()
         me = await temp.get_me()
@@ -131,18 +134,17 @@ async def main():
 
     client.commands = {}
     client.loaded_modules = set()
+    # Обработчик для команд от самого юзербота
     client.add_handler(MessageHandler(handler, filters.me & filters.text))
+    # Обработчик для команд от овнеров
     client.add_handler(MessageHandler(owner_handler, ~filters.me & filters.text))
+    # Обработчик для отредактированных сообщений
+    from pyrogram.handlers import EditedMessageHandler
     client.add_handler(EditedMessageHandler(edited_handler, filters.me & filters.text))
 
     await client.start()
     client.start_time = time.time()
-    
-    try:
-        loader.load_all(client)
-        print("Модули загружены успешно")
-    except Exception as e:
-        print(f"Ошибка загрузки модулей: {e}")
+    loader.load_all(client)
 
     git = "unknown"
     try: 
@@ -159,17 +161,9 @@ async def main():
 |_| \___/|_|  \___|_|_|\_\__,_|
 
 Forelka Started | Git: #{git}
-User: @{client.me.username if client.me.username else client.me.id}
-ID: {client.me.id}
 """)
 
     await idle()
-    await client.stop()
 
 if __name__ == "__main__":
-    try:
-        asyncio.run(main())
-    except KeyboardInterrupt:
-        print("\nForelka остановлен")
-    except Exception as e:
-        print(f"Критическая ошибка: {e}")
+    asyncio.run(main())
