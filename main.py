@@ -134,11 +134,6 @@ def _watch_process_output_for_url(proc: subprocess.Popen, label: str):
     return found
 
 async def _web_login_create_session(with_tunnel: bool = False):
-    """
-    Запускает webapp.py и ждёт, пока появится новая forelka-*.session.
-    Если with_tunnel=True, параллельно поднимает trycloudflare туннель.
-    После успешной авторизации останавливает webapp/туннель и возвращает имя сессии.
-    """
     before = set(_list_session_files())
 
     host = os.environ.get("FORELKA_WEB_HOST", "127.0.0.1")
@@ -294,7 +289,7 @@ async def main():
     if not sess:
         print("No session found.")
         print("Choose login method:")
-        print("  1) Terminal (API ID/HASH + phone in terminal)")
+        print("  1) Terminal (API ID/HASH + phone in terminal)/n")
         print("  2) Web panel (HTML login page)")
         print("  3) Web + tunnel (HTML + public localhost.run URL)")
         choice = (input("> ").strip() or "2").lower()
