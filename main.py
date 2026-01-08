@@ -64,6 +64,66 @@ def load_saved_api_for_session(session_filename: str):
     except Exception:
         return None
 
+def _list_session_files():
+    try:
+        return sorted(
+            [f for f in os.listdir() if f.startswith("forelka-") and f.endswith(".session")],
+            key=lambda p: os.path.getmtime(p),
+        )
+    except Exception:
+        return []
+
+def _pick_latest_session():
+    sess = _list_session_files()
+    return sess[-1] if sess else None
+
+async def _terminal_login_create_session():
+    api_id, api_hash = input("API ID: "), input("API HASH: ")
+    temp = Client("temp", api_id=api_id, api_hash=api_hash)
+    await temp.start()
+    me = await temp.get_me()
+    await temp.stop()
+    os.rename("temp.session", f"forelka-{me.id}.session")
+    return f"forelka-{me.id}.session"
+
+async def _web_login_create_session():
+    """
+    Запускает webapp.py и ждёт, пока появится новая forelka-*.session.
+    После успешной авторизации останавливает webapp и возвращает имя сессии.
+    """
+    before = set(_list_session_files())
+
+    host = os.environ.get("FORELKA_WEB_HOST", "127.0.0.1")
+    port = os.environ.get("FORELKA_WEB_PORT", "8000")
+    print(f"[web] Starting login panel on http://{host}:{port}")
+
+    # Запускаем отдельным процессом, чтобы можно было корректно остановить после логина
+    proc = subprocess.Popen(
+        [sys.executable, "webapp.py"],
+        env={**os.environ, "FORELKA_WEB_HOST": host, "FORELKA_WEB_PORT": str(port)},
+    )
+    try:
+        # Ждём появления новой сессии
+        while True:
+            await asyncio.sleep(0.6)
+            now = set(_list_session_files())
+            created = [s for s in now - before]
+            if created:
+                # Если создано несколько, берём самую свежую
+                created.sort(key=lambda p: os.path.getmtime(p))
+                return created[-1], proc
+
+            # Если webapp упал — прекращаем ожидание
+            if proc.poll() is not None:
+                raise RuntimeError("web login server stopped unexpectedly")
+    except KeyboardInterrupt:
+        try:
+            proc.terminate()
+            proc.wait(timeout=5)
+        except Exception:
+            pass
+        raise
+
 def is_owner(client, user_id):
     """Проверяет является ли пользователь овнером"""
     path = f"config-{client.me.id}.json"
@@ -145,28 +205,42 @@ async def edited_handler(c, m):
 
 async def main():
     utils.get_peer_type = lambda x: "channel" if str(x).startswith("-100") else ("chat" if x < 0 else "user")
-    
-    sess = next((f for f in os.listdir() if f.startswith("forelka-") and f.endswith(".session")), None)
-    if sess: 
-        api = load_saved_api_for_session(sess)
+
+    sess = _pick_latest_session()
+    web_proc = None
+
+    if not sess:
+        print("No session found.")
+        print("Choose login method:")
+        print("  1) Terminal (API ID/HASH + phone in terminal)")
+        print("  2) Web panel (HTML login page)")
+        choice = (input("> ").strip() or "2").lower()
+
+        if choice in ("1", "t", "term", "terminal"):
+            sess = await _terminal_login_create_session()
+        elif choice in ("2", "w", "web"):
+            sess, web_proc = await _web_login_create_session()
+        else:
+            print("Cancelled.")
+            return
+
+    # Если web login был выбран — аккуратно завершаем webapp и продолжаем запуск без перезагрузки
+    if web_proc:
         try:
-            if api:
-                client = Client(sess[:-8], api_id=api[0], api_hash=api[1])
-            else:
-                client = Client(sess[:-8])
-        except TypeError:
-            # Если библиотека требует api_id/api_hash, а файла с api данными нет,
-            # просим их в терминале (как и при первом входе).
-            api_id, api_hash = input("API ID: "), input("API HASH: ")
-            client = Client(sess[:-8], api_id=api_id, api_hash=api_hash)
-    else:
+            web_proc.terminate()
+            web_proc.wait(timeout=5)
+        except Exception:
+            pass
+
+    api = load_saved_api_for_session(sess)
+    try:
+        if api:
+            client = Client(sess[:-8], api_id=api[0], api_hash=api[1])
+        else:
+            client = Client(sess[:-8])
+    except TypeError:
         api_id, api_hash = input("API ID: "), input("API HASH: ")
-        temp = Client("temp", api_id=api_id, api_hash=api_hash)
-        await temp.start()
-        me = await temp.get_me()
-        await temp.stop()
-        os.rename("temp.session", f"forelka-{me.id}.session")
-        client = Client(f"forelka-{me.id}", api_id=api_id, api_hash=api_hash)
+        client = Client(sess[:-8], api_id=api_id, api_hash=api_hash)
 
     client.commands = {}
     client.loaded_modules = set()
