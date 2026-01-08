@@ -93,7 +93,7 @@ def _watch_process_output_for_url(proc: subprocess.Popen, label: str):
     Читает stdout процесса и печатает его, а при появлении trycloudflare URL — выводит его отдельно.
     Работает в отдельном потоке.
     """
-    url_re = re.compile(r"(https://[a-zA-Z0-9-]+\.trycloudflare\.com)")
+    url_re = re.compile(r"(https?://[a-zA-Z0-9.-]+\.(?:localhost\.run|lhr\.life))")
     found = {"url": None}
 
     def run():
@@ -269,7 +269,7 @@ async def main():
         print("Choose login method:")
         print("  1) Terminal (API ID/HASH + phone in terminal)")
         print("  2) Web panel (HTML login page)")
-        print("  3) Web + tunnel (HTML + public trycloudflare URL)")
+        print("  3) Web + tunnel (HTML + public localhost.run URL)")
         choice = (input("> ").strip() or "2").lower()
 
         if choice in ("1", "t", "term", "terminal"):

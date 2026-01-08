@@ -1,77 +1,52 @@
 import os
 import re
-import platform
 import shutil
-import stat
 import subprocess
 import sys
-import urllib.request
 
 
-CLOUDFLARED_DIR = os.path.join(os.path.dirname(__file__), ".bin")
-CLOUDFLARED_PATH = os.path.join(CLOUDFLARED_DIR, "cloudflared")
-
-
-def _is_termux() -> bool:
-    prefix = os.environ.get("PREFIX", "")
-    return prefix.startswith("/data/data/com.termux/")
-
-
-def _cloudflared_asset_for_current_platform() -> str | None:
-    """
-    Возвращает имя ассета для GitHub Releases (cloudflared-<os>-<arch>).
-    На Termux лучше ставить cloudflared из pkg/apt, скачивание linux-бинарника не поможет.
-    """
-    if _is_termux():
-        return None
-
-    if sys.platform != "linux":
-        return None
-
-    machine = platform.machine().lower()
-    if machine in ("x86_64", "amd64"):
-        return "cloudflared-linux-amd64"
-    if machine in ("aarch64", "arm64"):
-        return "cloudflared-linux-arm64"
-    if machine in ("armv7l", "armv7", "arm"):
-        return "cloudflared-linux-arm"
-    return None
-
-
-def _download_cloudflared(dst: str) -> None:
-    os.makedirs(os.path.dirname(dst), exist_ok=True)
-    asset = _cloudflared_asset_for_current_platform()
-    if not asset:
-        raise RuntimeError("Unsupported platform for auto-download. Install 'cloudflared' via system package manager.")
-    url = f"https://github.com/cloudflare/cloudflared/releases/latest/download/{asset}"
-    with urllib.request.urlopen(url, timeout=60) as r, open(dst, "wb") as f:
-        f.write(r.read())
-    st = os.stat(dst)
-    os.chmod(dst, st.st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
-
-
-def ensure_cloudflared() -> str:
-    if shutil.which("cloudflared"):
-        return "cloudflared"
-    if not os.path.exists(CLOUDFLARED_PATH):
-        if _is_termux():
-            raise RuntimeError(
-                "cloudflared не найден. В Termux установите его через пакетный менеджер (например: pkg install cloudflared)."
-            )
-        print("cloudflared не найден — скачиваю бинарник...")
-        _download_cloudflared(CLOUDFLARED_PATH)
-    return CLOUDFLARED_PATH
+def ensure_ssh() -> str:
+    exe = shutil.which("ssh")
+    if not exe:
+        raise RuntimeError("ssh не найден. Установите OpenSSH (например в Termux: pkg install openssh).")
+    return exe
 
 
 def run_quick_tunnel(local_url: str) -> int:
     """
-    Запускает trycloudflare quick tunnel.
+    Запускает туннель через localhost.run (SSH reverse tunnel).
     Команда живёт, пока вы её не остановите (Ctrl+C).
     """
-    exe = ensure_cloudflared()
-    cmd = [exe, "tunnel", "--url", local_url, "--no-autoupdate"]
+    ssh = ensure_ssh()
+    # local_url вида http://127.0.0.1:8000
+    # ssh -R 80:localhost:8000 localhost.run
+    try:
+        host_port = local_url.split("://", 1)[1]
+        host, port_s = host_port.split(":", 1)
+        port = int(port_s)
+    except Exception:
+        raise RuntimeError(f"Bad local_url: {local_url}")
+
+    subdomain = os.environ.get("FORELKA_LHR_SUBDOMAIN", "").strip()
+    # На localhost.run поддерживается -R <remote_port>:<local_host>:<local_port>
+    # и опционально -o RequestTTY=yes, чтобы сервис показывал ссылку в stdout.
+    # Если задан subdomain, обычно используют host вида <sub>.localhost.run
+    remote_host = f"{subdomain}.localhost.run" if subdomain else "localhost.run"
+
+    cmd = [
+        ssh,
+        "-o",
+        "StrictHostKeyChecking=no",
+        "-o",
+        "UserKnownHostsFile=/dev/null",
+        "-o",
+        "ServerAliveInterval=30",
+        "-R",
+        f"80:{host}:{port}",
+        remote_host,
+    ]
     print("Запускаю туннель:", " ".join(cmd))
-    print("Ожидайте URL вида https://....trycloudflare.com")
+    print("Ожидайте URL вида https://....localhost.run (иногда домен lhr.life)")
 
     proc = subprocess.Popen(
         cmd,
@@ -81,7 +56,7 @@ def run_quick_tunnel(local_url: str) -> int:
         bufsize=1,
     )
 
-    url_re = re.compile(r"(https://[a-zA-Z0-9-]+\.trycloudflare\.com)")
+    url_re = re.compile(r"(https?://[a-zA-Z0-9.-]+\.(?:localhost\.run|lhr\.life))")
     try:
         assert proc.stdout is not None
         for line in proc.stdout:
