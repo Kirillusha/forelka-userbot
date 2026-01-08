@@ -107,7 +107,10 @@ def _watch_process_output_for_url(proc: subprocess.Popen, label: str):
                     pass
                 m = url_re.search(line)
                 if m and not found["url"]:
-                    found["url"] = m.group(1)
+                    url = m.group(1)
+                    if "admin.localhost.run" in url or "localhost.run/docs" in url:
+                        continue
+                    found["url"] = url
                     print(f"\n[{label}] Public URL: {found['url']}\n")
         except Exception:
             pass
