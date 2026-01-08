@@ -172,3 +172,12 @@ cython_debug/
 
 # PyPI configuration file
 .pypirc
+
+# Forelka secrets / runtime artifacts
+*.session
+telegram_api-*.json
+config-*.json
+forelka.db
+forelka.log
+backups/
+.bin/

@@ -38,6 +38,32 @@ class TerminalLogger:
 
 sys.stdout = sys.stderr = TerminalLogger()
 
+def load_saved_api_for_session(session_filename: str):
+    """
+    Пытается прочитать api_id/api_hash, сохранённые веб-логином (или вручную),
+    чтобы Client мог стартовать даже если библиотека требует эти параметры.
+    """
+    # session_filename: forelka-<id>.session
+    try:
+        base = session_filename[:-8]  # forelka-<id>
+        user_id = int(base.split("-", 1)[1])
+    except Exception:
+        return None
+
+    path = f"telegram_api-{user_id}.json"
+    if not os.path.exists(path):
+        return None
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        api_id = int(data["api_id"])
+        api_hash = str(data["api_hash"])
+        if not api_hash:
+            return None
+        return api_id, api_hash
+    except Exception:
+        return None
+
 def is_owner(client, user_id):
     """Проверяет является ли пользователь овнером"""
     path = f"config-{client.me.id}.json"
@@ -122,7 +148,17 @@ async def main():
     
     sess = next((f for f in os.listdir() if f.startswith("forelka-") and f.endswith(".session")), None)
     if sess: 
-        client = Client(sess[:-8])
+        api = load_saved_api_for_session(sess)
+        try:
+            if api:
+                client = Client(sess[:-8], api_id=api[0], api_hash=api[1])
+            else:
+                client = Client(sess[:-8])
+        except TypeError:
+            # Если библиотека требует api_id/api_hash, а файла с api данными нет,
+            # просим их в терминале (как и при первом входе).
+            api_id, api_hash = input("API ID: "), input("API HASH: ")
+            client = Client(sess[:-8], api_id=api_id, api_hash=api_hash)
     else:
         api_id, api_hash = input("API ID: "), input("API HASH: ")
         temp = Client("temp", api_id=api_id, api_hash=api_hash)
