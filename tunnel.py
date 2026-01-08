@@ -28,6 +28,13 @@ def run_quick_tunnel(local_url: str) -> int:
     Запускает туннель через localhost.run (SSH reverse tunnel).
     Команда живёт, пока вы её не остановите (Ctrl+C).
     """
+    # Важно: когда stdout не TTY (например его читает main.py через PIPE),
+    # Python может буферить print(). Делаем line-buffering.
+    try:
+        sys.stdout.reconfigure(line_buffering=True)  # type: ignore[attr-defined]
+    except Exception:
+        pass
+
     ssh = ensure_ssh()
     # local_url вида http://127.0.0.1:8000
     # ssh -R 80:localhost:8000 localhost.run
@@ -71,8 +78,8 @@ def run_quick_tunnel(local_url: str) -> int:
             remote,
         ]
         if not quiet:
-            print("Запускаю туннель:", " ".join(cmd))
-            print("Ожидайте URL вида https://....localhost.run (иногда домен lhr.life)")
+            print("Запускаю туннель:", " ".join(cmd), flush=True)
+            print("Ожидайте URL вида https://....localhost.run (иногда домен lhr.life)", flush=True)
 
         proc = subprocess.Popen(
             cmd,
@@ -92,7 +99,7 @@ def run_quick_tunnel(local_url: str) -> int:
                 if m:
                     url = m.group(1)
                     if _is_public_tunnel_url(url):
-                        print("Ваш публичный URL:", url)
+                        print("Ваш публичный URL:", url, flush=True)
         except KeyboardInterrupt:
             try:
                 proc.terminate()
@@ -107,7 +114,7 @@ def run_quick_tunnel(local_url: str) -> int:
         rc = proc.poll()
         if rc is not None:
             if "Permission denied" in last_output or "publickey" in last_output:
-                print("\nlocalhost.run требует ключ. Пробую другой режим...\n")
+                print("\nlocalhost.run требует ключ. Пробую другой режим...\n", flush=True)
                 continue
             return rc
 

@@ -157,13 +157,15 @@ async def _web_login_create_session(with_tunnel: bool = False):
     if with_tunnel:
         try:
             tunnel_proc = subprocess.Popen(
-                [sys.executable, "tunnel.py"],
+                [sys.executable, "-u", "tunnel.py"],
                 env={
                     **os.environ,
                     "FORELKA_WEB_HOST": host,
                     "FORELKA_WEB_PORT": str(port),
                     # По умолчанию просим tunnel.py быть тихим (печатает только URL).
                     "FORELKA_TUNNEL_QUIET": "1",
+                    # На всякий случай отключаем буферизацию python stdout
+                    "PYTHONUNBUFFERED": "1",
                 },
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,
