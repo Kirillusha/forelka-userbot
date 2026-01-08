@@ -1,5 +1,6 @@
 import os
 import re
+import platform
 import shutil
 import stat
 import subprocess
@@ -11,9 +12,38 @@ CLOUDFLARED_DIR = os.path.join(os.path.dirname(__file__), ".bin")
 CLOUDFLARED_PATH = os.path.join(CLOUDFLARED_DIR, "cloudflared")
 
 
-def _download_cloudflared_linux_amd64(dst: str) -> None:
+def _is_termux() -> bool:
+    prefix = os.environ.get("PREFIX", "")
+    return prefix.startswith("/data/data/com.termux/")
+
+
+def _cloudflared_asset_for_current_platform() -> str | None:
+    """
+    Возвращает имя ассета для GitHub Releases (cloudflared-<os>-<arch>).
+    На Termux лучше ставить cloudflared из pkg/apt, скачивание linux-бинарника не поможет.
+    """
+    if _is_termux():
+        return None
+
+    if sys.platform != "linux":
+        return None
+
+    machine = platform.machine().lower()
+    if machine in ("x86_64", "amd64"):
+        return "cloudflared-linux-amd64"
+    if machine in ("aarch64", "arm64"):
+        return "cloudflared-linux-arm64"
+    if machine in ("armv7l", "armv7", "arm"):
+        return "cloudflared-linux-arm"
+    return None
+
+
+def _download_cloudflared(dst: str) -> None:
     os.makedirs(os.path.dirname(dst), exist_ok=True)
-    url = "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64"
+    asset = _cloudflared_asset_for_current_platform()
+    if not asset:
+        raise RuntimeError("Unsupported platform for auto-download. Install 'cloudflared' via system package manager.")
+    url = f"https://github.com/cloudflare/cloudflared/releases/latest/download/{asset}"
     with urllib.request.urlopen(url, timeout=60) as r, open(dst, "wb") as f:
         f.write(r.read())
     st = os.stat(dst)
@@ -24,8 +54,12 @@ def ensure_cloudflared() -> str:
     if shutil.which("cloudflared"):
         return "cloudflared"
     if not os.path.exists(CLOUDFLARED_PATH):
-        print("cloudflared не найден — скачиваю бинарник (linux-amd64)...")
-        _download_cloudflared_linux_amd64(CLOUDFLARED_PATH)
+        if _is_termux():
+            raise RuntimeError(
+                "cloudflared не найден. В Termux установите его через пакетный менеджер (например: pkg install cloudflared)."
+            )
+        print("cloudflared не найден — скачиваю бинарник...")
+        _download_cloudflared(CLOUDFLARED_PATH)
     return CLOUDFLARED_PATH
 
 

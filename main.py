@@ -4,6 +4,8 @@ import json
 import sys
 import subprocess
 import time
+import re
+import threading
 
 from pyrogram import Client
 from pyrogram import idle
@@ -86,10 +88,39 @@ async def _terminal_login_create_session():
     os.rename("temp.session", f"forelka-{me.id}.session")
     return f"forelka-{me.id}.session"
 
-async def _web_login_create_session():
+def _watch_process_output_for_url(proc: subprocess.Popen, label: str):
+    """
+    Читает stdout процесса и печатает его, а при появлении trycloudflare URL — выводит его отдельно.
+    Работает в отдельном потоке.
+    """
+    url_re = re.compile(r"(https://[a-zA-Z0-9-]+\.trycloudflare\.com)")
+    found = {"url": None}
+
+    def run():
+        try:
+            if proc.stdout is None:
+                return
+            for line in proc.stdout:
+                try:
+                    sys.stdout.write(f"[{label}] {line}")
+                except Exception:
+                    pass
+                m = url_re.search(line)
+                if m and not found["url"]:
+                    found["url"] = m.group(1)
+                    print(f"\n[{label}] Public URL: {found['url']}\n")
+        except Exception:
+            pass
+
+    t = threading.Thread(target=run, daemon=True)
+    t.start()
+    return found
+
+async def _web_login_create_session(with_tunnel: bool = False):
     """
     Запускает webapp.py и ждёт, пока появится новая forelka-*.session.
-    После успешной авторизации останавливает webapp и возвращает имя сессии.
+    Если with_tunnel=True, параллельно поднимает trycloudflare туннель.
+    После успешной авторизации останавливает webapp/туннель и возвращает имя сессии.
     """
     before = set(_list_session_files())
 
@@ -102,6 +133,23 @@ async def _web_login_create_session():
         [sys.executable, "webapp.py"],
         env={**os.environ, "FORELKA_WEB_HOST": host, "FORELKA_WEB_PORT": str(port)},
     )
+
+    tunnel_proc = None
+    if with_tunnel:
+        try:
+            tunnel_proc = subprocess.Popen(
+                [sys.executable, "tunnel.py"],
+                env={**os.environ, "FORELKA_WEB_HOST": host, "FORELKA_WEB_PORT": str(port)},
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True,
+                bufsize=1,
+            )
+            _watch_process_output_for_url(tunnel_proc, "tunnel")
+        except Exception as e:
+            print(f"[tunnel] Failed to start tunnel: {e}")
+            tunnel_proc = None
+
     try:
         # Ждём появления новой сессии
         while True:
@@ -111,7 +159,7 @@ async def _web_login_create_session():
             if created:
                 # Если создано несколько, берём самую свежую
                 created.sort(key=lambda p: os.path.getmtime(p))
-                return created[-1], proc
+                return created[-1], proc, tunnel_proc
 
             # Если webapp упал — прекращаем ожидание
             if proc.poll() is not None:
@@ -122,6 +170,12 @@ async def _web_login_create_session():
             proc.wait(timeout=5)
         except Exception:
             pass
+        if tunnel_proc:
+            try:
+                tunnel_proc.terminate()
+                tunnel_proc.wait(timeout=5)
+            except Exception:
+                pass
         raise
 
 def is_owner(client, user_id):
@@ -208,18 +262,22 @@ async def main():
 
     sess = _pick_latest_session()
     web_proc = None
+    tunnel_proc = None
 
     if not sess:
         print("No session found.")
         print("Choose login method:")
         print("  1) Terminal (API ID/HASH + phone in terminal)")
         print("  2) Web panel (HTML login page)")
+        print("  3) Web + tunnel (HTML + public trycloudflare URL)")
         choice = (input("> ").strip() or "2").lower()
 
         if choice in ("1", "t", "term", "terminal"):
             sess = await _terminal_login_create_session()
         elif choice in ("2", "w", "web"):
-            sess, web_proc = await _web_login_create_session()
+            sess, web_proc, tunnel_proc = await _web_login_create_session(with_tunnel=False)
+        elif choice in ("3", "wt", "web+tunnel", "web+t"):
+            sess, web_proc, tunnel_proc = await _web_login_create_session(with_tunnel=True)
         else:
             print("Cancelled.")
             return
@@ -229,6 +287,12 @@ async def main():
         try:
             web_proc.terminate()
             web_proc.wait(timeout=5)
+        except Exception:
+            pass
+    if tunnel_proc:
+        try:
+            tunnel_proc.terminate()
+            tunnel_proc.wait(timeout=5)
         except Exception:
             pass
 
