@@ -51,6 +51,28 @@ python main.py
 (инлайн бот подключается отдельно, python inline_bot.py) 
 ---
 
+▌🤖 Inline-бот (отдельно от юзербота)
+
+Сначала включите inline mode у BotFather:
+
+1) BotFather → `/mybots` → ваш бот → `Bot Settings` → `Inline Mode` → `Turn on`
+2) (опционально) `Inline Feedback` → `Enable`
+
+Запуск:
+
+FORELKA_INLINE_TOKEN="123:token" FORELKA_API_ID="12345" FORELKA_API_HASH="hash" FORELKA_INLINE_OWNERS="111,222" python3 inline_bot.py
+
+Переменные:
+- `FORELKA_INLINE_TOKEN` — токен бота
+- `FORELKA_API_ID` / `FORELKA_API_HASH` — api_id/api_hash (или положите рядом `telegram_api-*.json`)
+- `FORELKA_INLINE_OWNERS` — ID через запятую (если не задано, берётся `owners` из `config-*.json`)
+
+Команды инлайна:
+- `status`
+- `log [N]`
+- `search <слово>`
+- `cmds`
+
 ▌⚙ Использование
 
 - По умолчанию префикс команд — ., можно изменить в config.ini.
