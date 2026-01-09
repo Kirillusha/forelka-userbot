@@ -7,7 +7,8 @@ import requests
 from pyrogram.enums import ParseMode
 
 BASE_DIR = os.path.dirname(__file__)
-SYSTEM_MODULES_DIR = os.path.join(BASE_DIR, "modules")
+PACKAGE_DIR = os.path.abspath(os.path.join(BASE_DIR, os.pardir))
+SYSTEM_MODULES_DIR = os.path.join(PACKAGE_DIR, "modules")
 
 # Backward compatibility: раньше ядро импортировалось как `import loader`
 # и модули использовали строку "loader" в `info["module"]`.

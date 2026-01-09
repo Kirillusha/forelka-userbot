@@ -1,0 +1,2 @@
+"""Inline bot components."""
+

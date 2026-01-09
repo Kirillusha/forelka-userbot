@@ -13,14 +13,14 @@ async def update_cmd(client, message, args):
             return await message.edit("<blockquote><emoji id=5775887550262546277>❗️</emoji> <b>Already up to date</b></blockquote>", parse_mode=ParseMode.HTML)
         
         os.environ["RESTART_INFO"] = f"{time.time()}|{message.chat.id}|{message.id}"
-        os.execv(sys.executable, [sys.executable, "-m", "forelka.main"])
+        os.execv(sys.executable, [sys.executable, "-m", "forelka.core.main"])
     except Exception as e:
         await message.edit(f"<blockquote><emoji id=5778527486270770928>❌</emoji> <b>Error:</b> <code>{e}</code></blockquote>", parse_mode=ParseMode.HTML)
 
 async def restart_cmd(client, message, args):
     os.environ["RESTART_INFO"] = f"{time.time()}|{message.chat.id}|{message.id}"
     await message.edit("<blockquote><emoji id=5891211339170326418>⌛️</emoji> <b>Restarting...</b></blockquote>", parse_mode=ParseMode.HTML)
-    os.execv(sys.executable, [sys.executable, "-m", "forelka.main"])
+    os.execv(sys.executable, [sys.executable, "-m", "forelka.core.main"])
 
 def register(app, commands, module_name):
     commands["update"] = {"func": update_cmd, "module": module_name}
