@@ -6,8 +6,35 @@ import requests
 
 from pyrogram.enums import ParseMode
 
+BASE_DIR = os.path.dirname(__file__)
+SYSTEM_MODULES_DIR = os.path.join(BASE_DIR, "modules")
+
+# Backward compatibility: раньше ядро импортировалось как `import loader`
+# и модули использовали строку "loader" в `info["module"]`.
+sys.modules.setdefault("loader", sys.modules[__name__])
+
+
+def _legacy_modules_dir() -> str:
+    # На случай, если пользователь хранит модули в корне проекта (старый формат).
+    return os.path.abspath("modules")
+
+
+def _external_modules_dir() -> str:
+    # Загруженные/скачанные модули всегда живут в рабочей папке.
+    return os.path.abspath("loaded_modules")
+
+
+def _is_system_module(name: str) -> bool:
+    return os.path.exists(os.path.join(SYSTEM_MODULES_DIR, f"{name}.py"))
+
+
+def _is_legacy_module(name: str) -> bool:
+    return os.path.exists(os.path.join(_legacy_modules_dir(), f"{name}.py"))
+
+
 def is_protected(name):
-    return os.path.exists(f"modules/{name}.py") or name in ["loader", "main"]
+    # Запрещаем ставить модуль с именем системного/точки входа
+    return _is_system_module(name) or _is_legacy_module(name) or name in ["loader", "main"]
 
 async def dlm_cmd(client, message, args):
     if len(args) < 2: 
@@ -128,9 +155,29 @@ def load_all(app):
     })
     app.loaded_modules.add("loader")
     
-    for d in ["modules", "loaded_modules"]:
+    module_dirs = []
+    module_dirs.append(SYSTEM_MODULES_DIR)
+
+    legacy = _legacy_modules_dir()
+    if legacy != SYSTEM_MODULES_DIR and os.path.exists(legacy):
+        module_dirs.append(legacy)
+
+    external = _external_modules_dir()
+    if not os.path.exists(external):
+        os.makedirs(external)
+    module_dirs.append(external)
+
+    for d in module_dirs:
         if not os.path.exists(d):
             os.makedirs(d)
+        ignore = {"__init__.py"}
+        # Не загружаем forelka/modules/loader.py (устаревший класс ModuleLoader),
+        # чтобы не перезатереть sys.modules["loader"] (ядро).
+        if d in (SYSTEM_MODULES_DIR, legacy):
+            ignore.add("loader.py")
+
         for f in sorted(os.listdir(d)):
+            if f in ignore:
+                continue
             if f.endswith(".py") and not f.startswith("_"):
                 load_module(app, f[:-3], d)
