@@ -1,14 +1,15 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Tuple
 
 
 @dataclass(frozen=True)
 class ModuleMeta:
-    lib: str
+    lib: str  # источник модуля: system/external/legacy (как было раньше)
     developer: str
     description: str
+    pip: Tuple[str, ...]  # pip-пакеты, которые нужно установить для модуля
 
 
 def normalize_module_meta(
@@ -21,8 +22,33 @@ def normalize_module_meta(
     lib = str(raw.get("lib") or default_lib).strip() or default_lib
     developer = str(raw.get("developer") or "unknown").strip() or "unknown"
     description = str(raw.get("description") or "").strip()
+    pip_raw = raw.get("pip") or raw.get("libs") or raw.get("requirements") or ()
+    pip_list = []
+    if isinstance(pip_raw, (list, tuple, set)):
+        for x in pip_raw:
+            try:
+                s = str(x).strip()
+            except Exception:
+                continue
+            if not s:
+                continue
+            pip_list.append(s)
+    elif isinstance(pip_raw, str):
+        for part in pip_raw.replace(",", " ").split():
+            part = part.strip()
+            if part:
+                pip_list.append(part)
+
     # На всякий случай делаем коротко, чтобы вывод не ломал сообщение
     if len(description) > 600:
         description = description[:597] + "..."
-    return ModuleMeta(lib=lib, developer=developer, description=description)
+    # Нормализуем/дедуп по порядку
+    seen = set()
+    pip_norm = []
+    for p in pip_list:
+        if p in seen:
+            continue
+        seen.add(p)
+        pip_norm.append(p)
+    return ModuleMeta(lib=lib, developer=developer, description=description, pip=tuple(pip_norm))
 

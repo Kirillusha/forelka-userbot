@@ -1,7 +1,10 @@
 import importlib.util
+import importlib.metadata
 import os
 import sys
 import inspect
+import ast
+import subprocess
 import requests
 
 from pyrogram.enums import ParseMode
@@ -38,6 +41,64 @@ def _is_legacy_module(name: str) -> bool:
 def is_protected(name):
     # Запрещаем ставить модуль с именем системного/точки входа
     return _is_system_module(name) or _is_legacy_module(name) or name in ["loader", "main"]
+
+
+def _extract_forelka_meta_literal(py_path: str):
+    """
+    Пытаемся достать __forelka_meta__ как literal dict НЕ выполняя модуль.
+    Нужен для авто-установки зависимостей до import внутри модуля.
+    """
+    try:
+        with open(py_path, "r", encoding="utf-8") as f:
+            src = f.read()
+        tree = ast.parse(src, filename=py_path)
+        for node in tree.body:
+            if isinstance(node, ast.Assign):
+                for tgt in node.targets:
+                    if isinstance(tgt, ast.Name) and tgt.id == "__forelka_meta__":
+                        return ast.literal_eval(node.value)
+    except Exception:
+        return None
+    return None
+
+
+def _is_truthy_env(name: str, default: str = "1") -> bool:
+    v = os.environ.get(name, default).strip().lower()
+    return v in ("1", "true", "yes", "y", "on")
+
+
+def _ensure_pip_packages(packages):
+    """
+    Устанавливает pip-пакеты (если включено) перед загрузкой модуля.
+    По умолчанию включено, выключить: FORELKA_AUTO_PIP=0
+    """
+    if not packages:
+        return
+    if not _is_truthy_env("FORELKA_AUTO_PIP", "1"):
+        return
+
+    # Ограничим “размер аппетита” модуля
+    packages = [p for p in packages if isinstance(p, str) and p.strip()]
+    packages = [p.strip() for p in packages][:20]
+    if not packages:
+        return
+
+    # Пробуем не дёргать pip, если дистрибутив уже установлен
+    missing = []
+    for p in packages:
+        dist = p.split("==", 1)[0].split(">=", 1)[0].split("<=", 1)[0].strip()
+        if not dist:
+            continue
+        try:
+            importlib.metadata.version(dist)
+        except Exception:
+            missing.append(p)
+
+    if not missing:
+        return
+
+    cmd = [sys.executable, "-m", "pip", "install", "--upgrade", *missing]
+    subprocess.run(cmd, check=False, timeout=600)
 
 async def dlm_cmd(client, message, args):
     if len(args) < 2: 
@@ -123,16 +184,8 @@ async def ml_cmd(client, message, args):
 def load_module(app, name, folder):
     path = os.path.abspath(os.path.join(folder, f"{name}.py"))
     try:
-        spec = importlib.util.spec_from_file_location(name, path)
-        mod = importlib.util.module_from_spec(spec)
-        sys.modules[name] = mod
-        spec.loader.exec_module(mod)
-
-        # --- module meta ---
-        try:
-            raw_meta = getattr(mod, "__forelka_meta__", None)
-        except Exception:
-            raw_meta = None
+        # Достаём мету ДО выполнения кода, чтобы поставить зависимости
+        raw_meta_pre = _extract_forelka_meta_literal(path)
 
         default_lib = "external"
         try:
@@ -143,6 +196,23 @@ def load_module(app, name, folder):
                 default_lib = "legacy"
         except Exception:
             pass
+
+        try:
+            meta_pre = normalize_module_meta(name, raw_meta_pre, default_lib=default_lib)
+            _ensure_pip_packages(meta_pre.pip)
+        except Exception:
+            pass
+
+        spec = importlib.util.spec_from_file_location(name, path)
+        mod = importlib.util.module_from_spec(spec)
+        sys.modules[name] = mod
+        spec.loader.exec_module(mod)
+
+        # --- module meta ---
+        try:
+            raw_meta = getattr(mod, "__forelka_meta__", None)
+        except Exception:
+            raw_meta = None
 
         try:
             if not hasattr(app, "modules_meta") or not isinstance(getattr(app, "modules_meta"), dict):

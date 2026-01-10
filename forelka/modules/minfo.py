@@ -4,7 +4,7 @@ from pyrogram.enums import ParseMode
 __forelka_meta__ = {
     "lib": "system",
     "developer": "forelka",
-    "description": "Показ метаданных модулей (lib/developer/description).",
+    "description": "Показ метаданных модулей (lib/developer/description/pip).",
 }
 
 
@@ -12,13 +12,21 @@ def _format_meta(name: str, meta) -> str:
     lib = getattr(meta, "lib", "unknown")
     dev = getattr(meta, "developer", "unknown")
     desc = getattr(meta, "description", "")
+    pip = getattr(meta, "pip", ()) or ()
     desc_line = f"\n<b>Description:</b> {desc}" if desc else ""
+    pip_line = ""
+    try:
+        if pip:
+            pip_line = "\n<b>Pip:</b> <code>" + "</code> <code>".join([str(x) for x in pip]) + "</code>"
+    except Exception:
+        pip_line = ""
     return (
         "<blockquote>"
         f"<b>Module:</b> <code>{name}</code>\n"
         f"<b>Lib:</b> <code>{lib}</code>\n"
         f"<b>Developer:</b> <code>{dev}</code>"
         f"{desc_line}"
+        f"{pip_line}"
         "</blockquote>"
     )
 
