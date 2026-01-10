@@ -3,7 +3,6 @@ import importlib.metadata
 import os
 import sys
 import inspect
-import ast
 import subprocess
 import html
 import requests
@@ -42,25 +41,6 @@ def _is_legacy_module(name: str) -> bool:
 def is_protected(name):
     # Запрещаем ставить модуль с именем системного/точки входа
     return _is_system_module(name) or _is_legacy_module(name) or name in ["loader", "main"]
-
-
-def _extract_forelka_meta_literal(py_path: str):
-    """
-    Пытаемся достать __forelka_meta__ как literal dict НЕ выполняя модуль.
-    Нужен для авто-установки зависимостей до import внутри модуля.
-    """
-    try:
-        with open(py_path, "r", encoding="utf-8") as f:
-            src = f.read()
-        tree = ast.parse(src, filename=py_path)
-        for node in tree.body:
-            if isinstance(node, ast.Assign):
-                for tgt in node.targets:
-                    if isinstance(tgt, ast.Name) and tgt.id == "__forelka_meta__":
-                        return ast.literal_eval(node.value)
-    except Exception:
-        return None
-    return None
 
 
 def _extract_forelka_meta_header(py_path: str):
@@ -115,13 +95,8 @@ def _extract_forelka_meta_header(py_path: str):
 
 
 def _extract_forelka_meta_pre(py_path: str):
-    # header + __forelka_meta__ (dict имеет приоритет)
-    header = _extract_forelka_meta_header(py_path) or {}
-    literal = _extract_forelka_meta_literal(py_path) or {}
-    merged = dict(header)
-    if isinstance(literal, dict):
-        merged.update(literal)
-    return merged or None
+    # Только header (# ...) — без мета-словаря внутри кода.
+    return _extract_forelka_meta_header(py_path)
 
 
 def _is_truthy_env(name: str, default: str = "1") -> bool:
@@ -327,11 +302,8 @@ def load_module(app, name, folder):
         sys.modules[name] = mod
         spec.loader.exec_module(mod)
 
-        # --- module meta ---
-        try:
-            raw_meta = getattr(mod, "__forelka_meta__", None)
-        except Exception:
-            raw_meta = None
+        # --- module meta (только из header) ---
+        raw_meta = raw_meta_pre
 
         try:
             if not hasattr(app, "modules_meta") or not isinstance(getattr(app, "modules_meta"), dict):

@@ -1,3 +1,8 @@
+# name: Module Library
+# version: 1.0.0
+# developer: forelka
+# description: Поиск модулей в заданном GitHub-репозитории и выдача ссылок/команд для установки через .dlm.
+
 import asyncio
 import difflib
 from dataclasses import dataclass
@@ -5,14 +10,6 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import requests
 from pyrogram.enums import ParseMode
-
-__forelka_meta__ = {
-    "lib": "system",
-    "name": "Module Library",
-    "version": "1.0.0",
-    "developer": "forelka",
-    "description": "Поиск модулей в заданном GitHub-репозитории и выдача ссылок/команд для установки через .dlm.",
-}
 
 
 # --- Настройки каталога модулей ---

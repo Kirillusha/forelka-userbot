@@ -1,13 +1,9 @@
+# name: Module Info
+# version: 1.0.0
+# developer: forelka
+# description: Показ метаданных модулей (name/version/developer/description/pip).
+
 from pyrogram.enums import ParseMode
-
-
-__forelka_meta__ = {
-    "lib": "system",
-    "name": "Module Info",
-    "version": "1.0.0",
-    "developer": "forelka",
-    "description": "Показ метаданных модулей (lib/developer/description/pip).",
-}
 
 
 def _format_meta(name: str, meta) -> str:

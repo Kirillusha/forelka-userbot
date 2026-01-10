@@ -1,13 +1,10 @@
+# name: Ping
+# version: 1.0.0
+# developer: forelka
+# description: Проверка задержки (ping/latency) юзербота.
+
 import time
 from pyrogram.enums import ParseMode
-
-__forelka_meta__ = {
-    "lib": "system",
-    "name": "Ping",
-    "version": "1.0.0",
-    "developer": "forelka",
-    "description": "Проверка задержки (ping/latency) юзербота.",
-}
 
 async def ping_cmd(client, message, args):
     start = time.perf_counter()

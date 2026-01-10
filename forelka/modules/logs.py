@@ -1,13 +1,10 @@
+# name: Logs
+# version: 1.0.0
+# developer: forelka
+# description: Команда для отправки файла логов (forelka.log) в Saved Messages.
+
 import os
 from pyrogram.enums import ParseMode
-
-__forelka_meta__ = {
-    "lib": "system",
-    "name": "Logs",
-    "version": "1.0.0",
-    "developer": "forelka",
-    "description": "Команда для отправки файла логов (forelka.log) в Saved Messages.",
-}
 
 async def log_cmd(client, message, args):
     log_file = "forelka.log"

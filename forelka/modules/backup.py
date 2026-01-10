@@ -1,16 +1,13 @@
+# name: Backup
+# version: 1.0.0
+# developer: forelka
+# description: Бэкап/восстановление данных (config-*.json, loaded_modules, forelka.db).
+
 import os
 import zipfile
 import json
 from datetime import datetime
 from pyrogram.enums import ParseMode
-
-__forelka_meta__ = {
-    "lib": "system",
-    "name": "Backup",
-    "version": "1.0.0",
-    "developer": "forelka",
-    "description": "Бэкап/восстановление данных (config-*.json, loaded_modules, forelka.db).",
-}
 
 BACKUP_DIR = "backups"
 

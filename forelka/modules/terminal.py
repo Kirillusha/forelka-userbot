@@ -1,14 +1,11 @@
+# name: Terminal
+# version: 1.0.0
+# developer: forelka
+# description: Выполнение команд в терминале из Telegram (опасно — используйте только овнерам).
+
 import sys
 import asyncio
 from pyrogram.enums import ParseMode
-
-__forelka_meta__ = {
-    "lib": "system",
-    "name": "Terminal",
-    "version": "1.0.0",
-    "developer": "forelka",
-    "description": "Выполнение команд в терминале из Telegram (опасно — используйте только овнерам).",
-}
 
 async def term_cmd(client, message, args):
     pref = getattr(client, "prefix", ".")

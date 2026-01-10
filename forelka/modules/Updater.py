@@ -1,17 +1,14 @@
+# name: Updater
+# version: 1.0.0
+# developer: forelka
+# description: Обновление и рестарт юзербота (git pull + перезапуск процесса).
+
 import os
 import sys
 import time
 import asyncio
 import subprocess
 from pyrogram.enums import ParseMode
-
-__forelka_meta__ = {
-    "lib": "system",
-    "name": "Updater",
-    "version": "1.0.0",
-    "developer": "forelka",
-    "description": "Обновление и рестарт юзербота (git pull + перезапуск процесса).",
-}
 
 async def update_cmd(client, message, args):
     try:

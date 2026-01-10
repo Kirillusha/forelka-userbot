@@ -1,12 +1,9 @@
-from pyrogram.enums import ParseMode
+# name: Forelka Info
+# version: 1.0.0
+# developer: forelka
+# description: Короткая информация о Forelka (ссылки/каналы/поддержка).
 
-__forelka_meta__ = {
-    "lib": "system",
-    "name": "Forelka Info",
-    "version": "1.0.0",
-    "developer": "forelka",
-    "description": "Короткая информация о Forelka (ссылки/каналы/поддержка).",
-}
+from pyrogram.enums import ParseMode
 
 async def ubinfo_cmd(client, message, args):
     text = (
