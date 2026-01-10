@@ -1,6 +1,12 @@
 import sys
 from pyrogram.enums import ParseMode
 
+__forelka_meta__ = {
+    "lib": "system",
+    "developer": "forelka",
+    "description": "Список команд и модулей (system/external).",
+}
+
 async def help_cmd(client, message, args):
     pref = getattr(client, "prefix", ".")
     sys_mods, ext_mods = {}, {}

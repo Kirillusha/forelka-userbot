@@ -1,6 +1,12 @@
 import time
 from pyrogram.enums import ParseMode
 
+__forelka_meta__ = {
+    "lib": "system",
+    "developer": "forelka",
+    "description": "Проверка задержки (ping/latency) юзербота.",
+}
+
 async def ping_cmd(client, message, args):
     start = time.perf_counter()
     await message.edit("<blockquote><emoji id=5891211339170326418>⌛️</emoji> <b>Pinging...</b></blockquote>", parse_mode=ParseMode.HTML)

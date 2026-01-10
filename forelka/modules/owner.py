@@ -2,6 +2,12 @@ import json
 import os
 from pyrogram.enums import ParseMode
 
+__forelka_meta__ = {
+    "lib": "system",
+    "developer": "forelka",
+    "description": "Управление списком овнеров (добавить/удалить/показать owners в config-*.json).",
+}
+
 async def addowner_cmd(client, message, args):
     """Добавить овнера"""
     

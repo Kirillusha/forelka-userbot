@@ -5,6 +5,12 @@ import subprocess
 import requests
 from pyrogram.enums import ParseMode
 
+__forelka_meta__ = {
+    "lib": "system",
+    "developer": "forelka",
+    "description": "Информация о юзерботе/системе (статус, аптайм, ресурсы; psutil опционально).",
+}
+
 try:
     import psutil
     HAS_PSUTIL = True

@@ -6,6 +6,12 @@ from typing import Any, Dict, List, Optional, Tuple
 import requests
 from pyrogram.enums import ParseMode
 
+__forelka_meta__ = {
+    "lib": "system",
+    "developer": "forelka",
+    "description": "Поиск модулей в заданном GitHub-репозитории и выдача ссылок/команд для установки через .dlm.",
+}
+
 
 # --- Настройки каталога модулей ---
 # Укажи здесь репозиторий с .py модулями, которые можно ставить через .dlm

@@ -2,6 +2,12 @@ import json
 import os
 from pyrogram.enums import ParseMode
 
+__forelka_meta__ = {
+    "lib": "system",
+    "developer": "forelka",
+    "description": "Изменение префикса команд (сохраняется в config-*.json).",
+}
+
 async def prefix_cmd(client, message, args):
     path = f"config-{message.from_user.id}.json"
     cfg = {"prefix": "."}

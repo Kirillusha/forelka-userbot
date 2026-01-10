@@ -4,6 +4,12 @@ import json
 from datetime import datetime
 from pyrogram.enums import ParseMode
 
+__forelka_meta__ = {
+    "lib": "system",
+    "developer": "forelka",
+    "description": "Бэкап/восстановление данных (config-*.json, loaded_modules, forelka.db).",
+}
+
 BACKUP_DIR = "backups"
 
 def is_owner(client, user_id):

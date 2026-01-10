@@ -6,6 +6,8 @@ import requests
 
 from pyrogram.enums import ParseMode
 
+from .meta import normalize_module_meta
+
 BASE_DIR = os.path.dirname(__file__)
 PACKAGE_DIR = os.path.abspath(os.path.join(BASE_DIR, os.pardir))
 SYSTEM_MODULES_DIR = os.path.join(PACKAGE_DIR, "modules")
@@ -125,6 +127,29 @@ def load_module(app, name, folder):
         mod = importlib.util.module_from_spec(spec)
         sys.modules[name] = mod
         spec.loader.exec_module(mod)
+
+        # --- module meta ---
+        try:
+            raw_meta = getattr(mod, "__forelka_meta__", None)
+        except Exception:
+            raw_meta = None
+
+        default_lib = "external"
+        try:
+            folder_abs = os.path.abspath(folder)
+            if folder_abs == os.path.abspath(SYSTEM_MODULES_DIR):
+                default_lib = "system"
+            elif folder_abs == os.path.abspath(_legacy_modules_dir()):
+                default_lib = "legacy"
+        except Exception:
+            pass
+
+        try:
+            if not hasattr(app, "modules_meta") or not isinstance(getattr(app, "modules_meta"), dict):
+                app.modules_meta = {}
+            app.modules_meta[name] = normalize_module_meta(name, raw_meta, default_lib=default_lib)
+        except Exception:
+            pass
         
         reg = getattr(mod, "register", None)
         if reg:
@@ -148,6 +173,9 @@ def unload_module(app, name):
         del sys.modules[name]
 
 def load_all(app):
+    if not hasattr(app, "modules_meta") or not isinstance(getattr(app, "modules_meta"), dict):
+        app.modules_meta = {}
+
     app.commands.update({
         "dlm": {"func": dlm_cmd, "module": "loader"},
         "lm":  {"func": lm_cmd,  "module": "loader"},

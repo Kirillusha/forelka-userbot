@@ -1,6 +1,12 @@
 import os
 from pyrogram.enums import ParseMode
 
+__forelka_meta__ = {
+    "lib": "system",
+    "developer": "forelka",
+    "description": "Команда для отправки файла логов (forelka.log) в Saved Messages.",
+}
+
 async def log_cmd(client, message, args):
     log_file = "forelka.log"
     if not os.path.exists(log_file):

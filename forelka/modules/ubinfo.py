@@ -1,3 +1,11 @@
+from pyrogram.enums import ParseMode
+
+__forelka_meta__ = {
+    "lib": "system",
+    "developer": "forelka",
+    "description": "Короткая информация о Forelka (ссылки/каналы/поддержка).",
+}
+
 async def ubinfo_cmd(client, message, args):
     text = (
         "Forelka Userbot\n\n"
@@ -5,7 +13,7 @@ async def ubinfo_cmd(client, message, args):
         "Modules: @forelkausermodules\n"
         "Support: @forelka_support"
     )
-    await message.edit(text, disable_web_page_preview=True)
+    await message.edit(text, disable_web_page_preview=True, parse_mode=ParseMode.HTML)
 
 def register(app, commands, module_name):
     commands["forelka"] = {"func": ubinfo_cmd, "module": module_name}

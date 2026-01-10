@@ -5,6 +5,12 @@ import asyncio
 import subprocess
 from pyrogram.enums import ParseMode
 
+__forelka_meta__ = {
+    "lib": "system",
+    "developer": "forelka",
+    "description": "Обновление и рестарт юзербота (git pull + перезапуск процесса).",
+}
+
 async def update_cmd(client, message, args):
     try:
         await message.edit("<blockquote><emoji id=5891211339170326418>⌛️</emoji> <b>Updating...</b></blockquote>", parse_mode=ParseMode.HTML)
