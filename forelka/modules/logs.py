@@ -3,6 +3,8 @@ from pyrogram.enums import ParseMode
 
 __forelka_meta__ = {
     "lib": "system",
+    "name": "Logs",
+    "version": "1.0.0",
     "developer": "forelka",
     "description": "Команда для отправки файла логов (forelka.log) в Saved Messages.",
 }
@@ -17,4 +19,4 @@ async def log_cmd(client, message, args):
     await message.edit("<blockquote><emoji id=5776375003280838798>✅</emoji> <b>Logs sent to Saved Messages</b></blockquote>", parse_mode=ParseMode.HTML)
 
 def register(app, commands, module_name):
-    commands["log"] = {"func": log_cmd, "module": module_name}
+    commands["log"] = {"func": log_cmd, "module": module_name, "description": "Отправить forelka.log в Saved Messages."}

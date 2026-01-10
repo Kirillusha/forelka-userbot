@@ -4,6 +4,8 @@ from pyrogram.enums import ParseMode
 
 __forelka_meta__ = {
     "lib": "system",
+    "name": "Terminal",
+    "version": "1.0.0",
     "developer": "forelka",
     "description": "Выполнение команд в терминале из Telegram (опасно — используйте только овнерам).",
 }
@@ -45,4 +47,4 @@ async def term_cmd(client, message, args):
     await message.edit(text, parse_mode=ParseMode.HTML)
 
 def register(app, commands, module_name):
-    commands["term"] = {"func": term_cmd, "module": module_name}
+    commands["term"] = {"func": term_cmd, "module": module_name, "description": "Выполнить команду в shell."}

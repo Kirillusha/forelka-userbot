@@ -5,6 +5,7 @@ import sys
 import inspect
 import ast
 import subprocess
+import html
 import requests
 
 from pyrogram.enums import ParseMode
@@ -62,6 +63,67 @@ def _extract_forelka_meta_literal(py_path: str):
     return None
 
 
+def _extract_forelka_meta_header(py_path: str):
+    """
+    Достаём мету из комментариев в начале файла (как ты просил: "под #").
+
+    Пример:
+    # name: TicTacToe
+    # version: 2.0.0
+    # developer: @hikarimods
+    # description: Играй в крестики-нолики
+    # pip: aiohttp, pillow
+    """
+    out = {}
+    try:
+        with open(py_path, "r", encoding="utf-8") as f:
+            for _ in range(40):
+                line = f.readline()
+                if not line:
+                    break
+                s = line.strip()
+                if not s:
+                    continue
+                if not s.startswith("#"):
+                    break
+                s = s.lstrip("#").strip()
+                if not s:
+                    continue
+                if ":" in s:
+                    k, v = s.split(":", 1)
+                elif "=" in s:
+                    k, v = s.split("=", 1)
+                else:
+                    continue
+                k = k.strip().lower()
+                v = v.strip()
+                if not v:
+                    continue
+                # русские алиасы
+                if k in ("название", "имя"):
+                    k = "name"
+                elif k in ("версия",):
+                    k = "version"
+                elif k in ("разработчик", "автор"):
+                    k = "developer"
+                elif k in ("описание",):
+                    k = "description"
+                out[k] = v
+    except Exception:
+        return None
+    return out or None
+
+
+def _extract_forelka_meta_pre(py_path: str):
+    # header + __forelka_meta__ (dict имеет приоритет)
+    header = _extract_forelka_meta_header(py_path) or {}
+    literal = _extract_forelka_meta_literal(py_path) or {}
+    merged = dict(header)
+    if isinstance(literal, dict):
+        merged.update(literal)
+    return merged or None
+
+
 def _is_truthy_env(name: str, default: str = "1") -> bool:
     v = os.environ.get(name, default).strip().lower()
     return v in ("1", "true", "yes", "y", "on")
@@ -100,6 +162,63 @@ def _ensure_pip_packages(packages):
     cmd = [sys.executable, "-m", "pip", "install", "--upgrade", *missing]
     subprocess.run(cmd, check=False, timeout=600)
 
+
+def _escape(s) -> str:
+    try:
+        return html.escape(str(s), quote=True)
+    except Exception:
+        return ""
+
+
+def _render_module_card(app, module_name: str, *, action: str) -> str:
+    meta = None
+    try:
+        meta = (getattr(app, "modules_meta", {}) or {}).get(module_name)
+    except Exception:
+        meta = None
+
+    if not meta:
+        meta = normalize_module_meta(module_name, None, default_lib="external")
+
+    title = _escape(getattr(meta, "name", module_name) or module_name)
+    ver = _escape(getattr(meta, "version", "0.0.0") or "0.0.0")
+    desc = _escape(getattr(meta, "description", "") or "")
+    dev = _escape(getattr(meta, "developer", "unknown") or "unknown")
+    pref = _escape(getattr(app, "prefix", ".") or ".")
+
+    # команды модуля
+    cmds = []
+    try:
+        for cmd_name, info in (getattr(app, "commands", {}) or {}).items():
+            if (info or {}).get("module") != module_name:
+                continue
+            cmd_desc = (info or {}).get("description") or (info or {}).get("desc") or ""
+            cmd_desc = _escape(cmd_desc)
+            cmds.append((str(cmd_name), cmd_desc))
+    except Exception:
+        cmds = []
+
+    cmds.sort(key=lambda x: x[0])
+    cmd_lines = []
+    for i, (c, d) in enumerate(cmds[:18], start=1):
+        tail = f" {d}" if d else ""
+        cmd_lines.append(f"▫️ <code>{pref}{_escape(c)}</code>{tail}")
+    if len(cmds) > 18:
+        cmd_lines.append(f"… и ещё <code>{len(cmds) - 18}</code> команд(ы)")
+
+    cmd_block = "\n".join(cmd_lines) if cmd_lines else "<i>Команды не зарегистрированы</i>"
+
+    desc_line = f"<blockquote>ℹ️ {desc}</blockquote>\n\n" if desc else ""
+    dev_line = f"\n<blockquote>⭐️ Этот модуль сделан <code>{dev}</code>.</blockquote>" if dev else ""
+
+    return (
+        f"🪐 <b>Модуль {title}</b> (v{ver}) {_escape(action)} (΄◞ิ౪◟ิ‵)\n"
+        f"{desc_line}"
+        f"<blockquote expandable>\n{cmd_block}\n</blockquote>"
+        f"{dev_line}"
+    )
+
+
 async def dlm_cmd(client, message, args):
     if len(args) < 2: 
         return await message.edit("<blockquote><emoji id=5775887550262546277>❗️</emoji> <b>Usage: .dlm [url] [name]</b></blockquote>", parse_mode=ParseMode.HTML)
@@ -117,7 +236,7 @@ async def dlm_cmd(client, message, args):
             f.write(r.content)
             
         if load_module(client, name, "loaded_modules"):
-            await message.edit(f"<blockquote><emoji id=5776375003280838798>✅</emoji> <b>Module {name} installed</b></blockquote>", parse_mode=ParseMode.HTML)
+            await message.edit(_render_module_card(client, name, action="установлен и загружен"), parse_mode=ParseMode.HTML, disable_web_page_preview=True)
         else: 
             await message.edit("<blockquote><emoji id=5778527486270770928>❌</emoji> <b>Load failed</b></blockquote>", parse_mode=ParseMode.HTML)
     except Exception as e: 
@@ -142,7 +261,7 @@ async def lm_cmd(client, message, args):
     try:
         await client.download_media(message.reply_to_message, file_name=path)
         if load_module(client, name, "loaded_modules"): 
-            await message.edit(f"<blockquote><emoji id=5776375003280838798>✅</emoji> <b>Module {name} loaded</b></blockquote>", parse_mode=ParseMode.HTML)
+            await message.edit(_render_module_card(client, name, action="загружен"), parse_mode=ParseMode.HTML, disable_web_page_preview=True)
         else: 
             await message.edit("<blockquote><emoji id=5778527486270770928>❌</emoji> <b>Load failed</b></blockquote>", parse_mode=ParseMode.HTML)
     except Exception as e: 
@@ -185,7 +304,7 @@ def load_module(app, name, folder):
     path = os.path.abspath(os.path.join(folder, f"{name}.py"))
     try:
         # Достаём мету ДО выполнения кода, чтобы поставить зависимости
-        raw_meta_pre = _extract_forelka_meta_literal(path)
+        raw_meta_pre = _extract_forelka_meta_pre(path)
 
         default_lib = "external"
         try:
@@ -247,10 +366,10 @@ def load_all(app):
         app.modules_meta = {}
 
     app.commands.update({
-        "dlm": {"func": dlm_cmd, "module": "loader"},
-        "lm":  {"func": lm_cmd,  "module": "loader"},
-        "ulm": {"func": ulm_cmd, "module": "loader"},
-        "ml":  {"func": ml_cmd,  "module": "loader"}
+        "dlm": {"func": dlm_cmd, "module": "loader", "description": "Скачать и установить модуль по URL."},
+        "lm":  {"func": lm_cmd,  "module": "loader", "description": "Загрузить модуль из .py файла (reply) или показать список."},
+        "ulm": {"func": ulm_cmd, "module": "loader", "description": "Удалить установленный модуль из loaded_modules."},
+        "ml":  {"func": ml_cmd,  "module": "loader", "description": "Отправить файл установленного модуля."}
     })
     app.loaded_modules.add("loader")
     

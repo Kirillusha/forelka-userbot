@@ -3,6 +3,8 @@ from pyrogram.enums import ParseMode
 
 __forelka_meta__ = {
     "lib": "system",
+    "name": "Help",
+    "version": "1.0.0",
     "developer": "forelka",
     "description": "Список команд и модулей (system/external).",
 }
@@ -35,4 +37,4 @@ async def help_cmd(client, message, args):
     await message.edit(text, parse_mode=ParseMode.HTML)
 
 def register(app, commands, module_name):
-    commands["help"] = {"func": help_cmd, "module": module_name}
+    commands["help"] = {"func": help_cmd, "module": module_name, "description": "Список модулей и команд."}

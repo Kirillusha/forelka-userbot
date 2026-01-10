@@ -8,6 +8,8 @@ from pyrogram.enums import ParseMode
 
 __forelka_meta__ = {
     "lib": "system",
+    "name": "Module Library",
+    "version": "1.0.0",
     "developer": "forelka",
     "description": "Поиск модулей в заданном GitHub-репозитории и выдача ссылок/команд для установки через .dlm.",
 }
@@ -181,5 +183,5 @@ async def modsearch_cmd(client, message, args):
 
 
 def register(app, commands, module_name):
-    commands["modsearch"] = {"func": modsearch_cmd, "module": module_name}
+    commands["modsearch"] = {"func": modsearch_cmd, "module": module_name, "description": "Поиск модулей в репозитории модулей."}
 

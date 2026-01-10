@@ -6,6 +6,8 @@ from pyrogram.enums import ParseMode
 
 __forelka_meta__ = {
     "lib": "system",
+    "name": "Backup",
+    "version": "1.0.0",
     "developer": "forelka",
     "description": "Бэкап/восстановление данных (config-*.json, loaded_modules, forelka.db).",
 }
@@ -281,7 +283,7 @@ async def delbackup_cmd(client, message, args):
 
 def register(app, commands, module_name):
     """Регистрация команд"""
-    commands["backup"] = {"func": backup_cmd, "module": module_name}
-    commands["restore"] = {"func": restore_cmd, "module": module_name}
-    commands["backups"] = {"func": backups_cmd, "module": module_name}
-    commands["delbackup"] = {"func": delbackup_cmd, "module": module_name}
+    commands["backup"] = {"func": backup_cmd, "module": module_name, "description": "Создать бэкап данных."}
+    commands["restore"] = {"func": restore_cmd, "module": module_name, "description": "Восстановить из бэкапа."}
+    commands["backups"] = {"func": backups_cmd, "module": module_name, "description": "Список бэкапов."}
+    commands["delbackup"] = {"func": delbackup_cmd, "module": module_name, "description": "Удалить бэкап."}

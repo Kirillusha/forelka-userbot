@@ -4,6 +4,8 @@ from pyrogram.enums import ParseMode
 
 __forelka_meta__ = {
     "lib": "system",
+    "name": "Owners",
+    "version": "1.0.0",
     "developer": "forelka",
     "description": "Управление списком овнеров (добавить/удалить/показать owners в config-*.json).",
 }
@@ -169,6 +171,6 @@ async def owners_cmd(client, message, args):
 
 def register(app, commands, module_name):
     """Регистрация команд"""
-    commands["addowner"] = {"func": addowner_cmd, "module": module_name}
-    commands["delowner"] = {"func": delowner_cmd, "module": module_name}
-    commands["owners"] = {"func": owners_cmd, "module": module_name}
+    commands["addowner"] = {"func": addowner_cmd, "module": module_name, "description": "Добавить овнера (по ID или reply)."}
+    commands["delowner"] = {"func": delowner_cmd, "module": module_name, "description": "Удалить овнера (по ID или reply)."}
+    commands["owners"] = {"func": owners_cmd, "module": module_name, "description": "Показать список овнеров."}

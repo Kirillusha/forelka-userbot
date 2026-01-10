@@ -3,6 +3,8 @@ from pyrogram.enums import ParseMode
 
 __forelka_meta__ = {
     "lib": "system",
+    "name": "Ping",
+    "version": "1.0.0",
     "developer": "forelka",
     "description": "Проверка задержки (ping/latency) юзербота.",
 }
@@ -19,4 +21,4 @@ async def ping_cmd(client, message, args):
     await message.edit(res, parse_mode=ParseMode.HTML)
 
 def register(app, commands, module_name):
-    commands["ping"] = {"func": ping_cmd, "module": module_name}
+    commands["ping"] = {"func": ping_cmd, "module": module_name, "description": "Проверить задержку."}

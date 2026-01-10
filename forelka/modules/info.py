@@ -7,6 +7,8 @@ from pyrogram.enums import ParseMode
 
 __forelka_meta__ = {
     "lib": "system",
+    "name": "Info",
+    "version": "1.0.0",
     "developer": "forelka",
     "description": "Информация о юзерботе/системе (статус, аптайм, ресурсы; psutil опционально).",
 }
@@ -333,5 +335,5 @@ async def setinfobanner_cmd(client, message, args):
 
 def register(app, commands, module_name):
     """Регистрация команд"""
-    commands["info"] = {"func": info_cmd, "module": module_name}
-    commands["setinfobanner"] = {"func": setinfobanner_cmd, "module": module_name}
+    commands["info"] = {"func": info_cmd, "module": module_name, "description": "Показать статус/инфо."}
+    commands["setinfobanner"] = {"func": setinfobanner_cmd, "module": module_name, "description": "Настроить баннер для info."}

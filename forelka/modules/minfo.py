@@ -3,6 +3,8 @@ from pyrogram.enums import ParseMode
 
 __forelka_meta__ = {
     "lib": "system",
+    "name": "Module Info",
+    "version": "1.0.0",
     "developer": "forelka",
     "description": "Показ метаданных модулей (lib/developer/description/pip).",
 }
@@ -10,6 +12,8 @@ __forelka_meta__ = {
 
 def _format_meta(name: str, meta) -> str:
     lib = getattr(meta, "lib", "unknown")
+    title = getattr(meta, "name", name)
+    ver = getattr(meta, "version", "0.0.0")
     dev = getattr(meta, "developer", "unknown")
     desc = getattr(meta, "description", "")
     pip = getattr(meta, "pip", ()) or ()
@@ -23,6 +27,8 @@ def _format_meta(name: str, meta) -> str:
     return (
         "<blockquote>"
         f"<b>Module:</b> <code>{name}</code>\n"
+        f"<b>Name:</b> <code>{title}</code>\n"
+        f"<b>Version:</b> <code>{ver}</code>\n"
         f"<b>Lib:</b> <code>{lib}</code>\n"
         f"<b>Developer:</b> <code>{dev}</code>"
         f"{desc_line}"
@@ -74,5 +80,5 @@ async def minfo_cmd(client, message, args):
 
 
 def register(app, commands, module_name):
-    commands["minfo"] = {"func": minfo_cmd, "module": module_name}
+    commands["minfo"] = {"func": minfo_cmd, "module": module_name, "description": "Показ метаданных модулей."}
 

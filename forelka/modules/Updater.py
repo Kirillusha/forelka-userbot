@@ -7,6 +7,8 @@ from pyrogram.enums import ParseMode
 
 __forelka_meta__ = {
     "lib": "system",
+    "name": "Updater",
+    "version": "1.0.0",
     "developer": "forelka",
     "description": "Обновление и рестарт юзербота (git pull + перезапуск процесса).",
 }
@@ -29,8 +31,8 @@ async def restart_cmd(client, message, args):
     os.execv(sys.executable, [sys.executable, "-m", "forelka.core.main"])
 
 def register(app, commands, module_name):
-    commands["update"] = {"func": update_cmd, "module": module_name}
-    commands["restart"] = {"func": restart_cmd, "module": module_name}
+    commands["update"] = {"func": update_cmd, "module": module_name, "description": "git pull и перезапуск."}
+    commands["restart"] = {"func": restart_cmd, "module": module_name, "description": "Перезапуск юзербота."}
     
     restart_data = os.environ.get("RESTART_INFO")
     if restart_data:
