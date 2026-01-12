@@ -1,0 +1,27 @@
+meta:
+  code: en
+  name: English
+
+help:
+  title: "Forelka Modules"
+  section_system: "System:"
+  section_external: "External:"
+  no_external: "No external modules"
+  module_line: "<emoji id=5877468380125990242>➡️</emoji> <b>{module}</b> (<code>{cmds}</code>)"
+
+setlang:
+  title: "Language"
+  current: "Current language:"
+  available: "Available:"
+  usage: "Usage: {prefix}setlang [code]"
+  not_found: "Language not found: {code}"
+  changed: "Language set to: {code}"
+
+modules:
+  loader: "Loader"
+  help: "Help"
+  ping: "Ping"
+  prefix: "Settings"
+  info: "Info"
+  owner: "Owner"
+  updater: "Updater"

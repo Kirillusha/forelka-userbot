@@ -14,6 +14,8 @@ from pyrogram import utils
 from pyrogram.handlers import MessageHandler
 
 from . import loader
+from .database import Database
+from .i18n import build_translator, list_languages
 
 class TerminalLogger:
     def __init__(self):
@@ -330,6 +332,55 @@ async def main():
 
     client.commands = {}
     client.loaded_modules = set()
+
+    # --- i18n / language packs ---
+    client.db = Database()
+    base_lang = "ru"
+    saved_lang = (client.db.get("lang", base_lang) or base_lang).lower()
+    try:
+        _tr = build_translator(saved_lang, base_code=base_lang)
+        client.lang = saved_lang
+    except Exception:
+        _tr = build_translator(base_lang, base_code=base_lang)
+        client.lang = base_lang
+        try:
+            client.db.set("lang", base_lang)
+        except Exception:
+            pass
+
+    def _available_langs():
+        return sorted(list_languages().keys())
+
+    def _set_lang(code: str) -> bool:
+        code = (code or "").lower().strip()
+        if not code:
+            return False
+        if code not in list_languages():
+            return False
+        nonlocal _tr
+        try:
+            _tr = build_translator(code, base_code=base_lang)
+        except Exception:
+            return False
+        client.lang = code
+        client.t = _tr.t
+        try:
+            client.db.set("lang", code)
+        except Exception:
+            pass
+        return True
+
+    def _module_title(mod: str) -> str:
+        mod_short = (mod or "").split(".")[-1]
+        key = (mod_short or "").lower()
+        default = (mod_short.replace("_", " ").strip() or "Unknown").title()
+        return client.t(f"modules.{key}", default=default)
+
+    client.t = _tr.t
+    client.available_languages = _available_langs
+    client.set_lang = _set_lang
+    client.module_title = _module_title
+
     # Обработчик для команд от самого юзербота
     client.add_handler(MessageHandler(handler, filters.me & filters.text))
     # Обработчик для команд от овнеров

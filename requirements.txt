@@ -1,2 +1,3 @@
 kurigram
 flask>=3.0.0
+PyYAML>=6.0.1

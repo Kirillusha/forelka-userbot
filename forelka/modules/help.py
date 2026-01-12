@@ -14,17 +14,25 @@ async def help_cmd(client, message, args):
     def format_mods(mods_dict):
         res = ""
         for mod, cmds in sorted(mods_dict.items()):
+            mod_title = getattr(client, "module_title", lambda x: x)(mod)
             cmds_str = " | ".join([f"{pref}{c}" for c in sorted(cmds)])
-            res += f"<emoji id=5877468380125990242>➡️</emoji> <b>{mod}</b> (<code>{cmds_str}</code>)\n"
+            line = getattr(client, "t", lambda k, default=None, **kw: default or k)(
+                "help.module_line",
+                default="<emoji id=5877468380125990242>➡️</emoji> <b>{module}</b> (<code>{cmds}</code>)",
+                module=mod_title,
+                cmds=cmds_str,
+            )
+            res += f"{line}\n"
         return res.strip()
 
-    text = f"<emoji id=5897962422169243693>👻</emoji> <b>Forelka Modules</b>\n\n"
+    t = getattr(client, "t", lambda k, default=None, **kw: default or k)
+    text = f"<emoji id=5897962422169243693>👻</emoji> <b>{t('help.title', default='Forelka Modules')}</b>\n\n"
     if sys_mods:
-        text += f"<b>System:</b>\n<blockquote expandable>{format_mods(sys_mods)}</blockquote>\n\n"
+        text += f"<b>{t('help.section_system', default='System:')}</b>\n<blockquote expandable>{format_mods(sys_mods)}</blockquote>\n\n"
     if ext_mods:
-        text += f"<b>External:</b>\n<blockquote expandable>{format_mods(ext_mods)}</blockquote>"
+        text += f"<b>{t('help.section_external', default='External:')}</b>\n<blockquote expandable>{format_mods(ext_mods)}</blockquote>"
     else:
-        text += f"<b>External:</b>\n<blockquote>No external modules</blockquote>"
+        text += f"<b>{t('help.section_external', default='External:')}</b>\n<blockquote>{t('help.no_external', default='No external modules')}</blockquote>"
 
     await message.edit(text, parse_mode=ParseMode.HTML)
 
