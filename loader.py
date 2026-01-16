@@ -30,22 +30,6 @@ def _get_prefix(client):
             pref = "."
     return pref or "."
 
-def _module_location(path):
-    if not path:
-        return "Неизвестно"
-    if "loaded_modules" in path.replace("\\", "/"):
-        return "Внешний"
-    return "Системный"
-
-def _module_path(module):
-    path = getattr(module, "__file__", "") if module else ""
-    if not path:
-        return ""
-    try:
-        return os.path.relpath(path, os.getcwd())
-    except Exception:
-        return path
-
 def _module_commands(app, module_name):
     cmds = [c for c, v in app.commands.items() if v.get("module") == module_name]
     cmds.sort()
@@ -56,21 +40,20 @@ def _format_meta_block(app, module_name):
     commands = _module_commands(app, module_name)
     meta = read_module_meta(module, module_name, commands)
     display = meta.get("name") or module_name
-    version = meta.get("version") or "unknown"
-    author = meta.get("author") or "unknown"
+    version = meta.get("version") or "—"
+    author = meta.get("author") or "—"
     description = meta.get("description") or ""
-    location = _module_location(getattr(module, "__file__", "") if module else "")
-    path = _module_path(module) or "unknown"
     pref = _get_prefix(app)
 
+    header = (
+        f"<emoji id=5897962422169243693>👻</emoji> "
+        f"<b>Forelka</b> • <b>{_escape(display)}</b>"
+    )
     info = (
         "<blockquote>"
-        f"<b>Name:</b> <code>{_escape(display)}</code>\n"
-        f"<b>Module:</b> <code>{_escape(module_name)}</code>\n"
-        f"<b>Version:</b> <code>{_escape(version)}</code>\n"
-        f"<b>Author:</b> <code>{_escape(author)}</code>\n"
-        f"<b>Location:</b> <code>{_escape(location)}</code>\n"
-        f"<b>Path:</b> <code>{_escape(path)}</code>"
+        f"<emoji id=5879770735999717115>👤</emoji> <b>Автор:</b> <code>{_escape(author)}</code>\n"
+        f"<emoji id=5877396173135811032>⚙️</emoji> <b>Версия:</b> <code>{_escape(version)}</code>\n"
+        f"<emoji id=5877468380125990242>➡️</emoji> <b>Команд:</b> <code>{len(commands)}</code>"
         "</blockquote>"
     )
 
@@ -80,10 +63,13 @@ def _format_meta_block(app, module_name):
     else:
         cmds_line = "Нет команд"
 
-    text = f"{info}\n\n<b>Commands:</b>\n<blockquote><code>{_escape(cmds_line)}</code></blockquote>"
+    text = (
+        f"{header}\n\n{info}\n\n"
+        f"<b>Команды:</b>\n<blockquote expandable><code>{_escape(cmds_line)}</code></blockquote>"
+    )
 
     if description:
-        text += f"\n\n<b>Description:</b>\n<blockquote>{_escape(description)}</blockquote>"
+        text += f"\n\n<b>Описание:</b>\n<blockquote>{_escape(description)}</blockquote>"
 
     links = []
     for label, key in (("Repo", "repo"), ("Docs", "docs"), ("Source", "source")):
@@ -91,14 +77,14 @@ def _format_meta_block(app, module_name):
         if value:
             links.append(f"<b>{label}:</b> <code>{_escape(value)}</code>")
     if links:
-        text += "\n\n<b>Links:</b>\n<blockquote>" + "\n".join(links) + "</blockquote>"
+        text += "\n\n<b>Ссылки:</b>\n<blockquote>" + "\n".join(links) + "</blockquote>"
 
     extra = meta.get("extra") or {}
     if extra:
         extra_lines = []
         for key, value in extra.items():
             extra_lines.append(f"<b>{_escape(key)}:</b> <code>{_escape(value)}</code>")
-        text += "\n\n<b>Extra:</b>\n<blockquote>" + "\n".join(extra_lines) + "</blockquote>"
+        text += "\n\n<b>Дополнительно:</b>\n<blockquote>" + "\n".join(extra_lines) + "</blockquote>"
 
     return text
 
