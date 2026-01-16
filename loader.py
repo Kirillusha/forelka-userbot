@@ -1,13 +1,106 @@
+import html
 import importlib.util
+import inspect
+import json
 import os
 import sys
-import inspect
+
 import requests
 
 from pyrogram.enums import ParseMode
 
+from meta_lib import read_module_meta
+
 def is_protected(name):
     return os.path.exists(f"modules/{name}.py") or name in ["loader", "main"]
+
+def _escape(value):
+    return html.escape(str(value)) if value is not None else ""
+
+def _get_prefix(client):
+    pref = getattr(client, "prefix", None)
+    if pref:
+        return pref
+    path = f"config-{client.me.id}.json"
+    if os.path.exists(path):
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                pref = json.load(f).get("prefix", ".")
+        except Exception:
+            pref = "."
+    return pref or "."
+
+def _module_location(path):
+    if not path:
+        return "Неизвестно"
+    if "loaded_modules" in path.replace("\\", "/"):
+        return "Внешний"
+    return "Системный"
+
+def _module_path(module):
+    path = getattr(module, "__file__", "") if module else ""
+    if not path:
+        return ""
+    try:
+        return os.path.relpath(path, os.getcwd())
+    except Exception:
+        return path
+
+def _module_commands(app, module_name):
+    cmds = [c for c, v in app.commands.items() if v.get("module") == module_name]
+    cmds.sort()
+    return cmds
+
+def _format_meta_block(app, module_name):
+    module = sys.modules.get(module_name)
+    commands = _module_commands(app, module_name)
+    meta = read_module_meta(module, module_name, commands)
+    display = meta.get("name") or module_name
+    version = meta.get("version") or "unknown"
+    author = meta.get("author") or "unknown"
+    description = meta.get("description") or ""
+    location = _module_location(getattr(module, "__file__", "") if module else "")
+    path = _module_path(module) or "unknown"
+    pref = _get_prefix(app)
+
+    info = (
+        "<blockquote>"
+        f"<b>Name:</b> <code>{_escape(display)}</code>\n"
+        f"<b>Module:</b> <code>{_escape(module_name)}</code>\n"
+        f"<b>Version:</b> <code>{_escape(version)}</code>\n"
+        f"<b>Author:</b> <code>{_escape(author)}</code>\n"
+        f"<b>Location:</b> <code>{_escape(location)}</code>\n"
+        f"<b>Path:</b> <code>{_escape(path)}</code>"
+        "</blockquote>"
+    )
+
+    cmd_list = meta.get("commands") or []
+    if cmd_list:
+        cmds_line = " | ".join([f"{pref}{c}" for c in cmd_list])
+    else:
+        cmds_line = "Нет команд"
+
+    text = f"{info}\n\n<b>Commands:</b>\n<blockquote><code>{_escape(cmds_line)}</code></blockquote>"
+
+    if description:
+        text += f"\n\n<b>Description:</b>\n<blockquote>{_escape(description)}</blockquote>"
+
+    links = []
+    for label, key in (("Repo", "repo"), ("Docs", "docs"), ("Source", "source")):
+        value = meta.get(key)
+        if value:
+            links.append(f"<b>{label}:</b> <code>{_escape(value)}</code>")
+    if links:
+        text += "\n\n<b>Links:</b>\n<blockquote>" + "\n".join(links) + "</blockquote>"
+
+    extra = meta.get("extra") or {}
+    if extra:
+        extra_lines = []
+        for key, value in extra.items():
+            extra_lines.append(f"<b>{_escape(key)}:</b> <code>{_escape(value)}</code>")
+        text += "\n\n<b>Extra:</b>\n<blockquote>" + "\n".join(extra_lines) + "</blockquote>"
+
+    return text
 
 async def dlm_cmd(client, message, args):
     if len(args) < 2: 
@@ -26,7 +119,11 @@ async def dlm_cmd(client, message, args):
             f.write(r.content)
             
         if load_module(client, name, "loaded_modules"):
-            await message.edit(f"<blockquote><emoji id=5776375003280838798>✅</emoji> <b>Module {name} installed</b></blockquote>", parse_mode=ParseMode.HTML)
+            meta_block = _format_meta_block(client, name)
+            await message.edit(
+                f"<blockquote><emoji id=5776375003280838798>✅</emoji> <b>Module {name} installed</b></blockquote>\n\n{meta_block}",
+                parse_mode=ParseMode.HTML
+            )
         else: 
             await message.edit("<blockquote><emoji id=5778527486270770928>❌</emoji> <b>Load failed</b></blockquote>", parse_mode=ParseMode.HTML)
     except Exception as e: 
@@ -50,8 +147,12 @@ async def lm_cmd(client, message, args):
     
     try:
         await client.download_media(message.reply_to_message, file_name=path)
-        if load_module(client, name, "loaded_modules"): 
-            await message.edit(f"<blockquote><emoji id=5776375003280838798>✅</emoji> <b>Module {name} loaded</b></blockquote>", parse_mode=ParseMode.HTML)
+        if load_module(client, name, "loaded_modules"):
+            meta_block = _format_meta_block(client, name)
+            await message.edit(
+                f"<blockquote><emoji id=5776375003280838798>✅</emoji> <b>Module {name} loaded</b></blockquote>\n\n{meta_block}",
+                parse_mode=ParseMode.HTML
+            )
         else: 
             await message.edit("<blockquote><emoji id=5778527486270770928>❌</emoji> <b>Load failed</b></blockquote>", parse_mode=ParseMode.HTML)
     except Exception as e: 
