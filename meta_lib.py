@@ -14,11 +14,107 @@ META_FIELDS = {
     "docs",
 }
 
+COMMAND_INFO_KEYS = (
+    "commands_info",
+    "command_descriptions",
+    "commands_desc",
+    "commands_help",
+    "cmds_info",
+)
+
 
 def _as_text(value: Any) -> str:
     if value is None:
         return ""
     return str(value).strip()
+
+
+def _normalize_command_name(value: Any) -> str:
+    text = _as_text(value)
+    if not text:
+        return ""
+    text = text.strip()
+    if text and text[0] in (".", "/", "!", "?"):
+        text = text[1:]
+    return text.strip().lower()
+
+
+def _parse_commands_value(value: Any) -> Dict[str, str]:
+    result: Dict[str, str] = {}
+    if value is None:
+        return result
+    if isinstance(value, dict):
+        for key, val in value.items():
+            name = _normalize_command_name(key)
+            if not name:
+                continue
+            if isinstance(val, dict):
+                desc = val.get("description") or val.get("desc") or val.get("about") or ""
+            else:
+                desc = val
+            result[name] = _as_text(desc)
+        return result
+    if isinstance(value, (list, tuple, set)):
+        for item in value:
+            if isinstance(item, dict):
+                name = item.get("name") or item.get("command") or item.get("cmd")
+                desc = item.get("description") or item.get("desc") or item.get("about")
+                if not name and len(item) == 1:
+                    key, val = next(iter(item.items()))
+                    name = key
+                    desc = val
+                name = _normalize_command_name(name)
+                if name:
+                    result[name] = _as_text(desc)
+                continue
+            text = _as_text(item)
+            if not text:
+                continue
+            name = text
+            desc = ""
+            for sep in (" — ", " - ", ": "):
+                if sep in text:
+                    name, desc = text.split(sep, 1)
+                    break
+            name = _normalize_command_name(name)
+            if name:
+                result[name] = _as_text(desc)
+        return result
+    text = _as_text(value)
+    if text:
+        name = text
+        desc = ""
+        for sep in (" — ", " - ", ": "):
+            if sep in text:
+                name, desc = text.split(sep, 1)
+                break
+        name = _normalize_command_name(name)
+        if name:
+            result[name] = _as_text(desc)
+    return result
+
+
+def extract_command_descriptions(raw: Any) -> Dict[str, str]:
+    meta = _coerce_meta(raw) or {}
+    result: Dict[str, str] = {}
+    candidates = []
+    if "commands" in meta:
+        candidates.append(meta.get("commands"))
+    for key in COMMAND_INFO_KEYS:
+        if key in meta:
+            candidates.append(meta.get(key))
+    extra = meta.get("extra")
+    if isinstance(extra, dict):
+        if "commands" in extra:
+            candidates.append(extra.get("commands"))
+        for key in COMMAND_INFO_KEYS:
+            if key in extra:
+                candidates.append(extra.get(key))
+    for candidate in candidates:
+        parsed = _parse_commands_value(candidate)
+        if parsed:
+            result.update(parsed)
+    return result
 
 
 def _normalize_commands(value: Optional[Iterable[str]]) -> List[str]:

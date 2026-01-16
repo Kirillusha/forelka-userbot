@@ -4,7 +4,7 @@ import os
 import sys
 from pyrogram.enums import ParseMode
 
-from meta_lib import read_module_meta
+from meta_lib import extract_command_descriptions, read_module_meta
 
 LIST_ALIASES = {"list", "all", "ls"}
 
@@ -33,6 +33,25 @@ def _collect_commands(client):
         cmds.sort()
     return module_cmds
 
+def _first_line(text):
+    if not text:
+        return ""
+    return str(text).strip().splitlines()[0].strip()
+
+def _command_descriptions(client, module_name, commands):
+    module = sys.modules.get(module_name)
+    raw_meta = getattr(module, "__meta__", None) if module else None
+    meta_descs = extract_command_descriptions(raw_meta)
+    result = {}
+    for cmd in commands:
+        key = cmd.lower()
+        desc = meta_descs.get(key, "")
+        if not desc:
+            func = client.commands.get(cmd, {}).get("func")
+            desc = _first_line(getattr(func, "__doc__", ""))
+        result[key] = desc
+    return result
+
 def _resolve_target(target, module_names, commands_map, pref):
     cleaned = target.strip()
     if cleaned.startswith(pref):
@@ -48,52 +67,44 @@ def _resolve_target(target, module_names, commands_map, pref):
         return partial[0], []
     return None, partial
 
-def _render_module_detail(module_name, module, meta, pref):
+def _render_module_detail(client, module_name, module, meta, pref):
     display = meta.get("name") or module_name
-    version = meta.get("version") or "—"
-    author = meta.get("author") or "—"
-    description = meta.get("description") or ""
+    author = meta.get("author") or "Не указан"
+    description = _first_line(meta.get("description")) or "Нет описания"
     commands = meta.get("commands") or []
+    cmd_descs = _command_descriptions(client, module_name, commands) if module else {}
 
-    header = (
-        f"<emoji id=5897962422169243693>👻</emoji> "
-        f"<b>Forelka</b> • <b>{_escape(display)}</b>"
-    )
-    info = (
+    module_line = (
         "<blockquote>"
-        f"<emoji id=5879770735999717115>👤</emoji> <b>Автор:</b> <code>{_escape(author)}</code>\n"
-        f"<emoji id=5877396173135811032>⚙️</emoji> <b>Версия:</b> <code>{_escape(version)}</code>\n"
-        f"<emoji id=5877468380125990242>➡️</emoji> <b>Команд:</b> <code>{len(commands)}</code>"
+        f"<emoji id=5897962422169243693>👻</emoji> "
+        f"<b>Модуль:</b> <code>{_escape(display)}</code>"
+        "</blockquote>"
+    )
+    desc_line = (
+        "<blockquote>"
+        f"<emoji id=5877396173135811032>⚙️</emoji> "
+        f"<b>Описание:</b> {_escape(description)}"
         "</blockquote>"
     )
 
-    text = f"{header}\n\n{info}"
-
-    if description:
-        text += f"\n\n<b>Описание:</b>\n<blockquote>{_escape(description)}</blockquote>"
-
     if commands:
-        cmds_line = " | ".join([f"{pref}{c}" for c in commands])
+        lines = []
+        for cmd in commands:
+            desc = cmd_descs.get(cmd.lower()) or "нет описания"
+            lines.append(f"{_escape(pref + cmd)} — {_escape(desc)}")
+        cmds_block = "\n".join(lines)
     else:
-        cmds_line = "Нет команд"
-    text += f"\n\n<b>Команды:</b>\n<blockquote expandable><code>{_escape(cmds_line)}</code></blockquote>"
+        cmds_block = _escape("Нет команд")
 
-    links = []
-    for label, key in (("Repo", "repo"), ("Docs", "docs"), ("Source", "source")):
-        value = meta.get(key)
-        if value:
-            links.append(f"<b>{label}:</b> <code>{_escape(value)}</code>")
-    if links:
-        text += "\n\n<b>Ссылки:</b>\n<blockquote>" + "\n".join(links) + "</blockquote>"
+    commands_block = f"<blockquote expandable><code>{cmds_block}</code></blockquote>"
+    author_line = (
+        "<blockquote>"
+        f"<emoji id=5879770735999717115>👤</emoji> "
+        f"<b>Разработчик:</b> <code>{_escape(author)}</code>"
+        "</blockquote>"
+    )
 
-    extra = meta.get("extra") or {}
-    if extra:
-        extra_lines = []
-        for key, value in extra.items():
-            extra_lines.append(f"<b>{_escape(key)}:</b> <code>{_escape(value)}</code>")
-        text += "\n\n<b>Дополнительно:</b>\n<blockquote>" + "\n".join(extra_lines) + "</blockquote>"
-
-    return text
+    return f"{module_line}\n{desc_line}\n\n{commands_block}\n\n{author_line}"
 
 async def help_cmd(client, message, args):
     pref = _get_prefix(client)
@@ -117,7 +128,7 @@ async def help_cmd(client, message, args):
 
         module = sys.modules.get(module_name)
         meta = read_module_meta(module, module_name, module_cmds.get(module_name))
-        detail = _render_module_detail(module_name, module, meta, pref)
+        detail = _render_module_detail(client, module_name, module, meta, pref)
         return await message.edit(detail, parse_mode=ParseMode.HTML)
 
     sys_mods, ext_mods = {}, {}

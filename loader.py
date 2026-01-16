@@ -9,7 +9,7 @@ import requests
 
 from pyrogram.enums import ParseMode
 
-from meta_lib import read_module_meta
+from meta_lib import extract_command_descriptions, read_module_meta
 
 def is_protected(name):
     return os.path.exists(f"modules/{name}.py") or name in ["loader", "main"]
@@ -35,58 +35,65 @@ def _module_commands(app, module_name):
     cmds.sort()
     return cmds
 
+def _first_line(text):
+    if not text:
+        return ""
+    return str(text).strip().splitlines()[0].strip()
+
+def _command_descriptions(app, module_name, commands):
+    module = sys.modules.get(module_name)
+    raw_meta = getattr(module, "__meta__", None) if module else None
+    meta_descs = extract_command_descriptions(raw_meta)
+    result = {}
+    for cmd in commands:
+        key = cmd.lower()
+        desc = meta_descs.get(key, "")
+        if not desc:
+            func = app.commands.get(cmd, {}).get("func")
+            desc = _first_line(getattr(func, "__doc__", ""))
+        result[key] = desc
+    return result
+
 def _format_meta_block(app, module_name):
     module = sys.modules.get(module_name)
     commands = _module_commands(app, module_name)
     meta = read_module_meta(module, module_name, commands)
     display = meta.get("name") or module_name
-    version = meta.get("version") or "—"
-    author = meta.get("author") or "—"
-    description = meta.get("description") or ""
+    author = meta.get("author") or "Не указан"
+    description = _first_line(meta.get("description")) or "Нет описания"
     pref = _get_prefix(app)
 
-    header = (
-        f"<emoji id=5897962422169243693>👻</emoji> "
-        f"<b>Forelka</b> • <b>{_escape(display)}</b>"
-    )
-    info = (
+    cmd_descs = _command_descriptions(app, module_name, commands)
+    if commands:
+        lines = []
+        for cmd in commands:
+            desc = cmd_descs.get(cmd.lower()) or "нет описания"
+            lines.append(f"{_escape(pref + cmd)} — {_escape(desc)}")
+        cmds_block = "\n".join(lines)
+    else:
+        cmds_block = _escape("Нет команд")
+
+    loaded_line = (
         "<blockquote>"
-        f"<emoji id=5879770735999717115>👤</emoji> <b>Автор:</b> <code>{_escape(author)}</code>\n"
-        f"<emoji id=5877396173135811032>⚙️</emoji> <b>Версия:</b> <code>{_escape(version)}</code>\n"
-        f"<emoji id=5877468380125990242>➡️</emoji> <b>Команд:</b> <code>{len(commands)}</code>"
+        f"<emoji id=5776375003280838798>✅</emoji> "
+        f"<b>Модуль</b> <code>{_escape(display)}</code> <b>загружен</b>"
+        "</blockquote>"
+    )
+    desc_line = (
+        "<blockquote>"
+        f"<emoji id=5877396173135811032>⚙️</emoji> "
+        f"<b>Описание:</b> {_escape(description)}"
+        "</blockquote>"
+    )
+    commands_block = f"<blockquote expandable><code>{cmds_block}</code></blockquote>"
+    author_line = (
+        "<blockquote>"
+        f"<emoji id=5879770735999717115>👤</emoji> "
+        f"<b>Разработчик:</b> <code>{_escape(author)}</code>"
         "</blockquote>"
     )
 
-    cmd_list = meta.get("commands") or []
-    if cmd_list:
-        cmds_line = " | ".join([f"{pref}{c}" for c in cmd_list])
-    else:
-        cmds_line = "Нет команд"
-
-    text = (
-        f"{header}\n\n{info}\n\n"
-        f"<b>Команды:</b>\n<blockquote expandable><code>{_escape(cmds_line)}</code></blockquote>"
-    )
-
-    if description:
-        text += f"\n\n<b>Описание:</b>\n<blockquote>{_escape(description)}</blockquote>"
-
-    links = []
-    for label, key in (("Repo", "repo"), ("Docs", "docs"), ("Source", "source")):
-        value = meta.get(key)
-        if value:
-            links.append(f"<b>{label}:</b> <code>{_escape(value)}</code>")
-    if links:
-        text += "\n\n<b>Ссылки:</b>\n<blockquote>" + "\n".join(links) + "</blockquote>"
-
-    extra = meta.get("extra") or {}
-    if extra:
-        extra_lines = []
-        for key, value in extra.items():
-            extra_lines.append(f"<b>{_escape(key)}:</b> <code>{_escape(value)}</code>")
-        text += "\n\n<b>Дополнительно:</b>\n<blockquote>" + "\n".join(extra_lines) + "</blockquote>"
-
-    return text
+    return f"{loaded_line}\n{desc_line}\n\n{commands_block}\n\n{author_line}"
 
 async def dlm_cmd(client, message, args):
     if len(args) < 2: 
