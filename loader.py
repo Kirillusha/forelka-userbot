@@ -113,10 +113,7 @@ async def dlm_cmd(client, message, args):
             
         if load_module(client, name, "loaded_modules"):
             meta_block = _format_meta_block(client, name)
-            await message.edit(
-                f"<blockquote><emoji id=5776375003280838798>✅</emoji> <b>Module {name} installed</b></blockquote>\n\n{meta_block}",
-                parse_mode=ParseMode.HTML
-            )
+            await message.edit(meta_block, parse_mode=ParseMode.HTML)
         else: 
             await message.edit("<blockquote><emoji id=5778527486270770928>❌</emoji> <b>Load failed</b></blockquote>", parse_mode=ParseMode.HTML)
     except Exception as e: 
@@ -142,10 +139,7 @@ async def lm_cmd(client, message, args):
         await client.download_media(message.reply_to_message, file_name=path)
         if load_module(client, name, "loaded_modules"):
             meta_block = _format_meta_block(client, name)
-            await message.edit(
-                f"<blockquote><emoji id=5776375003280838798>✅</emoji> <b>Module {name} loaded</b></blockquote>\n\n{meta_block}",
-                parse_mode=ParseMode.HTML
-            )
+            await message.edit(meta_block, parse_mode=ParseMode.HTML)
         else: 
             await message.edit("<blockquote><emoji id=5778527486270770928>❌</emoji> <b>Load failed</b></blockquote>", parse_mode=ParseMode.HTML)
     except Exception as e: 
