@@ -45,7 +45,13 @@ def _command_descriptions(client, module_name, commands):
     result = {}
     for cmd in commands:
         key = cmd.lower()
-        desc = meta_descs.get(key, "")
+        desc = ""
+        info = client.commands.get(cmd, {})
+        if isinstance(info, dict):
+            desc = info.get("description") or info.get("desc") or info.get("about") or info.get("help") or ""
+        desc = _first_line(desc)
+        if not desc:
+            desc = meta_descs.get(key, "")
         if not desc:
             func = client.commands.get(cmd, {}).get("func")
             desc = _first_line(getattr(func, "__doc__", ""))
