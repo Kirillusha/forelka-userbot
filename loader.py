@@ -1,13 +1,99 @@
+import html
 import importlib.util
+import inspect
+import json
 import os
 import sys
-import inspect
+
 import requests
 
 from pyrogram.enums import ParseMode
 
+from meta_lib import extract_command_descriptions, read_module_meta
+
 def is_protected(name):
     return os.path.exists(f"modules/{name}.py") or name in ["loader", "main"]
+
+def _escape(value):
+    return html.escape(str(value)) if value is not None else ""
+
+def _get_prefix(client):
+    pref = getattr(client, "prefix", None)
+    if pref:
+        return pref
+    path = f"config-{client.me.id}.json"
+    if os.path.exists(path):
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                pref = json.load(f).get("prefix", ".")
+        except Exception:
+            pref = "."
+    return pref or "."
+
+def _module_commands(app, module_name):
+    cmds = [c for c, v in app.commands.items() if v.get("module") == module_name]
+    cmds.sort()
+    return cmds
+
+def _first_line(text):
+    if not text:
+        return ""
+    return str(text).strip().splitlines()[0].strip()
+
+def _command_descriptions(app, module_name, commands):
+    module = sys.modules.get(module_name)
+    raw_meta = getattr(module, "__meta__", None) if module else None
+    meta_descs = extract_command_descriptions(raw_meta)
+    result = {}
+    for cmd in commands:
+        key = cmd.lower()
+        desc = meta_descs.get(key, "")
+        if not desc:
+            func = app.commands.get(cmd, {}).get("func")
+            desc = _first_line(getattr(func, "__doc__", ""))
+        result[key] = desc
+    return result
+
+def _format_meta_block(app, module_name):
+    module = sys.modules.get(module_name)
+    commands = _module_commands(app, module_name)
+    meta = read_module_meta(module, module_name, commands)
+    display = meta.get("name") or module_name
+    author = meta.get("author") or "Не указан"
+    description = _first_line(meta.get("description")) or "Нет описания"
+    pref = _get_prefix(app)
+
+    cmd_descs = _command_descriptions(app, module_name, commands)
+    if commands:
+        lines = []
+        for cmd in commands:
+            desc = cmd_descs.get(cmd.lower()) or "нет описания"
+            lines.append(f"{_escape(pref + cmd)} — {_escape(desc)}")
+        cmds_block = "\n".join(lines)
+    else:
+        cmds_block = _escape("Нет команд")
+
+    loaded_line = (
+        "<blockquote>"
+        f"<emoji id=5776375003280838798>✅</emoji> "
+        f"<b>Модуль</b> <code>{_escape(display)}</code> <b>загружен</b>"
+        "</blockquote>"
+    )
+    desc_line = (
+        "<blockquote>"
+        f"<emoji id=5877396173135811032>⚙️</emoji> "
+        f"<b>Описание:</b> {_escape(description)}"
+        "</blockquote>"
+    )
+    commands_block = f"<blockquote expandable><code>{cmds_block}</code></blockquote>"
+    author_line = (
+        "<blockquote>"
+        f"<emoji id=5879770735999717115>👤</emoji> "
+        f"<b>Разработчик:</b> <code>{_escape(author)}</code>"
+        "</blockquote>"
+    )
+
+    return f"{loaded_line}\n{desc_line}\n\n{commands_block}\n\n{author_line}"
 
 async def dlm_cmd(client, message, args):
     if len(args) < 2: 
@@ -26,7 +112,8 @@ async def dlm_cmd(client, message, args):
             f.write(r.content)
             
         if load_module(client, name, "loaded_modules"):
-            await message.edit(f"<blockquote><emoji id=5776375003280838798>✅</emoji> <b>Module {name} installed</b></blockquote>", parse_mode=ParseMode.HTML)
+            meta_block = _format_meta_block(client, name)
+            await message.edit(meta_block, parse_mode=ParseMode.HTML)
         else: 
             await message.edit("<blockquote><emoji id=5778527486270770928>❌</emoji> <b>Load failed</b></blockquote>", parse_mode=ParseMode.HTML)
     except Exception as e: 
@@ -50,8 +137,9 @@ async def lm_cmd(client, message, args):
     
     try:
         await client.download_media(message.reply_to_message, file_name=path)
-        if load_module(client, name, "loaded_modules"): 
-            await message.edit(f"<blockquote><emoji id=5776375003280838798>✅</emoji> <b>Module {name} loaded</b></blockquote>", parse_mode=ParseMode.HTML)
+        if load_module(client, name, "loaded_modules"):
+            meta_block = _format_meta_block(client, name)
+            await message.edit(meta_block, parse_mode=ParseMode.HTML)
         else: 
             await message.edit("<blockquote><emoji id=5778527486270770928>❌</emoji> <b>Load failed</b></blockquote>", parse_mode=ParseMode.HTML)
     except Exception as e: 
