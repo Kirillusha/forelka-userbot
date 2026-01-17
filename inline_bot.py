@@ -546,6 +546,8 @@ def _build_cfg_results(query):
     cfg = _load_config()
     section = cfg.get(CONFIG_SECTION, {})
     module_cfg = section.get(module_name, {}) if isinstance(section, dict) else {}
+    if not isinstance(module_cfg, dict):
+        module_cfg = {}
     text = _format_module_config_text(module_name, module_cfg if isinstance(module_cfg, dict) else {})
     markup = _build_module_keyboard(module_name, module_cfg if isinstance(module_cfg, dict) else {})
     results.append(
