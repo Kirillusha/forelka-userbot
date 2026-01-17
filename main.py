@@ -342,6 +342,16 @@ async def main():
     client.start_time = time.time()
     loader.load_all(client)
 
+    try:
+        from inline_bot import ensure_inline_bot
+
+        inline_service, inline_status = await ensure_inline_bot(owner_id=client.me.id)
+        if inline_service:
+            client.inline_bot = inline_service
+        print(f"Inline bot: {inline_status}")
+    except Exception as e:
+        print(f"Inline bot error: {e}")
+
     git = "unknown"
     try: 
         git = subprocess.check_output(["git", "rev-parse", "--short", "HEAD"]).decode().strip()
@@ -360,6 +370,13 @@ Forelka Started | Git: #{git}
 """)
 
     await idle()
+
+    try:
+        from inline_bot import stop_inline_bot
+
+        await stop_inline_bot()
+    except Exception:
+        pass
 
 if __name__ == "__main__":
     asyncio.run(main())

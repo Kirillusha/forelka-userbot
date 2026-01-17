@@ -48,7 +48,7 @@ python main.py
 
 
 
-(инлайн бот подключается отдельно, python inline_bot.py)
+(инлайн бот запускается вместе с main.py)
 
 ▌🤖 Inline Bot (BotFather)
 
@@ -57,8 +57,9 @@ python main.py
 .inlinebot setup
 
 Команда создаст бот через BotFather (если нужно), включит inline mode и сохранит токен
-в config-<id>.json. Далее запускайте inline-бота:
+в config-<id>.json. После этого inline-бот запускается вместе с main.py.
 
+При необходимости можно запускать отдельно:
 python inline_bot.py
 
 При необходимости можно задать переменные окружения:
