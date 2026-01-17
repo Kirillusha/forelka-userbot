@@ -28,6 +28,7 @@ LOG_FILE = "forelka.log"
 CACHE_TTL = 30
 CONFIG_SECTION = "modules_config"
 CALLBACK_SAFE_RE = re.compile(r"^[0-9A-Za-z_.-]{1,32}$")
+MODULES_MENU_LIMIT = 36
 
 
 def _find_config_file():
@@ -265,6 +266,38 @@ def _format_module_config_text(module_name, module_cfg):
     return _truncate(f"{title}\n\n{body}\n\n{hint}")
 
 
+def _cfg_menu_text(modules):
+    count = len(modules)
+    return (
+        "<blockquote><emoji id=5877396173135811032>⚙️</emoji> <b>Module config</b></blockquote>\n\n"
+        f"<b>Модулей:</b> <code>{count}</code>\n"
+        "<b>Выберите модуль кнопкой ниже</b>\n\n"
+        "<b>Usage:</b> <code>cfg &lt;module&gt;</code>\n"
+        "<b>Search:</b> <code>cfg set &lt;module&gt; &lt;key&gt; &lt;value&gt;</code>"
+    )
+
+
+def _build_modules_menu_keyboard(modules):
+    rows = []
+    row = []
+    for module_name in modules[:MODULES_MENU_LIMIT]:
+        row.append(
+            InlineKeyboardButton(
+                f"⚙️ {module_name}",
+                switch_inline_query_current_chat=f"cfg {module_name}",
+            )
+        )
+        if len(row) >= 2:
+            rows.append(row)
+            row = []
+    if row:
+        rows.append(row)
+    rows.append([InlineKeyboardButton("➕ Add key", switch_inline_query_current_chat="cfg set ")])
+    if len(modules) > MODULES_MENU_LIMIT:
+        rows.append([InlineKeyboardButton("🔍 Search module", switch_inline_query_current_chat="cfg ")])
+    return InlineKeyboardMarkup(rows)
+
+
 def _build_main_keyboard():
     return InlineKeyboardMarkup(
         [
@@ -412,22 +445,17 @@ def _build_cfg_results(query):
             )
             return results
 
-        cfg = _load_config()
-        section = cfg.get(CONFIG_SECTION, {})
-        for module_name in modules[:30]:
-            module_cfg = section.get(module_name, {})
-            count = len(module_cfg) if isinstance(module_cfg, dict) else 0
-            text = _format_module_config_text(module_name, module_cfg if isinstance(module_cfg, dict) else {})
-            markup = _build_module_keyboard(module_name, module_cfg if isinstance(module_cfg, dict) else {})
-            results.append(
-                InlineQueryResultArticle(
-                    id=_make_result_id("cfg", module_name),
-                    title=f"⚙️ {module_name}",
-                    input_message_content=InputTextMessageContent(text, parse_mode=ParseMode.HTML),
-                    description=f"Keys: {count}",
-                    reply_markup=markup,
-                )
+        text = _cfg_menu_text(modules)
+        markup = _build_modules_menu_keyboard(modules)
+        results.append(
+            InlineQueryResultArticle(
+                id=_make_result_id("cfg", "menu"),
+                title="⚙️ Module config",
+                input_message_content=InputTextMessageContent(text, parse_mode=ParseMode.HTML),
+                description="Выберите модуль кнопкой",
+                reply_markup=markup,
             )
+        )
         return results
 
     sub = tokens[1].lower()
