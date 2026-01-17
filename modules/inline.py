@@ -4,6 +4,7 @@ import os
 import random
 import re
 import string
+import sys
 import time
 
 from pyrogram.enums import ParseMode
@@ -13,6 +14,7 @@ INLINE_PLACEHOLDER = "user@forelka:~$"
 TOKEN_RE = re.compile(r"\d{6,}:[\w-]{30,}")
 FORELKA_BOT_RE = re.compile(r"@forelka_[0-9a-zA-Z]{6}_bot")
 MAX_USERNAME_TRIES = 5
+INLINE_BOT_SCRIPT = "inline_bot.py"
 
 
 def _load_config(path):
@@ -46,6 +48,35 @@ def _mask_token(token):
     if len(token) < 12:
         return "***"
     return f"{token[:6]}...{token[-4:]}"
+
+
+async def _start_inline_bot_process(client, restart=False):
+    script_path = os.path.join(os.getcwd(), INLINE_BOT_SCRIPT)
+    if not os.path.exists(script_path):
+        return False, "inline_bot.py not found"
+
+    proc = getattr(client, "_inline_bot_process", None)
+    if proc and proc.returncode is None:
+        if not restart:
+            return False, "already running"
+        try:
+            proc.terminate()
+            await asyncio.wait_for(proc.wait(), timeout=5)
+        except Exception:
+            pass
+
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            sys.executable,
+            script_path,
+            cwd=os.getcwd(),
+            stdout=asyncio.subprocess.DEVNULL,
+            stderr=asyncio.subprocess.DEVNULL,
+        )
+        client._inline_bot_process = proc
+        return True, "started"
+    except Exception as e:
+        return False, str(e)
 
 
 class BotFatherInlineManager:
@@ -243,11 +274,15 @@ async def inlinebot_cmd(client, message, args):
         token = manager.get_token()
         username = manager.get_username() or "not set"
         status = "✅ настроен" if token else "❌ не найден"
+        proc = getattr(client, "_inline_bot_process", None)
+        running = proc and proc.returncode is None
+        runtime = "🟢 запущен" if running else "⚪ не запущен"
         text = (
             "<blockquote><emoji id=5897962422169243693>👻</emoji> <b>Inline Bot</b></blockquote>\n\n"
             f"<b>Статус:</b> <code>{status}</code>\n"
             f"<b>Username:</b> <code>{username}</code>\n"
-            f"<b>Token:</b> <code>{_mask_token(token) or '—'}</code>\n\n"
+            f"<b>Token:</b> <code>{_mask_token(token) or '—'}</code>\n"
+            f"<b>Inline bot:</b> <code>{runtime}</code>\n\n"
             "<b>Команды:</b>\n"
             f"<code>{pref}inlinebot setup</code> - создать или получить токен\n"
             f"<code>{pref}inlinebot revoke</code> - перевыпустить токен\n"
@@ -315,12 +350,15 @@ async def inlinebot_cmd(client, message, args):
                 parse_mode=ParseMode.HTML,
             )
 
+        started, start_msg = await _start_inline_bot_process(client, restart=False)
         username = manager.get_username() or "unknown"
+        runtime = "🟢 запущен" if started or start_msg == "already running" else "⚠️ не запущен"
+        runtime_note = "" if started or start_msg == "already running" else f"\n<b>Причина:</b> <code>{start_msg}</code>"
         return await message.edit(
             "<blockquote><emoji id=5776375003280838798>✅</emoji> <b>Token получен!</b></blockquote>\n\n"
             f"<b>Username:</b> <code>@{username}</code>\n"
             f"<b>Token:</b> <code>{token}</code>\n\n"
-            "<b>Запуск:</b> <code>python inline_bot.py</code>",
+            f"<b>Inline bot:</b> <code>{runtime}</code>{runtime_note}",
             parse_mode=ParseMode.HTML,
         )
 
@@ -343,11 +381,15 @@ async def inlinebot_cmd(client, message, args):
                 parse_mode=ParseMode.HTML,
             )
 
+        started, start_msg = await _start_inline_bot_process(client, restart=True)
         username = manager.get_username() or "unknown"
+        runtime = "🟢 перезапущен" if started or start_msg == "already running" else "⚠️ не запущен"
+        runtime_note = "" if started or start_msg == "already running" else f"\n<b>Причина:</b> <code>{start_msg}</code>"
         return await message.edit(
             "<blockquote><emoji id=5776375003280838798>✅</emoji> <b>Token обновлен!</b></blockquote>\n\n"
             f"<b>Username:</b> <code>@{username}</code>\n"
-            f"<b>Token:</b> <code>{token}</code>",
+            f"<b>Token:</b> <code>{token}</code>\n\n"
+            f"<b>Inline bot:</b> <code>{runtime}</code>{runtime_note}",
             parse_mode=ParseMode.HTML,
         )
 
