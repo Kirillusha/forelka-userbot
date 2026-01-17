@@ -1,3 +1,4 @@
+import ast
 import asyncio
 import hashlib
 import html
@@ -24,6 +25,8 @@ except ImportError:
         InlineQueryResultArticle,
         InputTextMessageContent,
     )
+
+from module_config import get_config_schema, validate_value
 
 LOG_FILE = "forelka.log"
 CACHE_TTL = 30
@@ -145,6 +148,19 @@ def _truncate(text, limit=3800):
     return text[:limit] + "..."
 
 
+def _format_value(value):
+    if isinstance(value, list):
+        inner = ", ".join(str(item) for item in value)
+        return f"[{inner}]"
+    return _stringify_value(value)
+
+
+def _mask_value(value):
+    if isinstance(value, list):
+        return "[" + ", ".join("*" * len(str(item)) for item in value) + "]"
+    return "*" * len(str(value))
+
+
 def _make_result_id(*parts):
     raw = "|".join(parts)
     digest = hashlib.md5(raw.encode("utf-8")).hexdigest()[:24]
@@ -155,15 +171,14 @@ def _is_callback_safe(value):
     return bool(CALLBACK_SAFE_RE.fullmatch(value or ""))
 
 
-def _make_callback_data(action, module_name, key=None):
-    if not _is_callback_safe(module_name):
+def _make_callback_data(*parts):
+    if not parts:
         return None
-    if key and not _is_callback_safe(key):
-        return None
-    parts = ["cfg", action, module_name]
-    if key:
-        parts.append(key)
-    data = "|".join(parts)
+    str_parts = [str(part) for part in parts]
+    for part in str_parts[1:]:
+        if not _is_callback_safe(part):
+            return None
+    data = "|".join(str_parts)
     if len(data) > 60:
         return None
     return data
@@ -249,6 +264,14 @@ class InlineBotService:
             section.pop(module_name, None)
             self._save_config(cfg)
 
+    def _reset_option(self, module_name, option):
+        schema = self._get_schema(module_name)
+        schema_item = schema.get(option, {}) if isinstance(schema, dict) else {}
+        if "default" in schema_item:
+            self._set_module_config_value(module_name, option, schema_item.get("default"))
+            return
+        self._delete_module_config_key(module_name, option)
+
     def _list_modules(self):
         modules = set()
         for folder in ("modules", "loaded_modules"):
@@ -262,18 +285,43 @@ class InlineBotService:
                 modules.add(name[:-3])
         return sorted(modules)
 
-    def _format_module_config_text(self, module_name, module_cfg):
+    def _parse_input_value(self, raw, schema_item):
+        if schema_item and schema_item.get("type") in {"list", "multi_choice"}:
+            try:
+                value = ast.literal_eval(raw)
+            except Exception:
+                value = [item.strip() for item in raw.split(",") if item.strip()]
+            if not isinstance(value, list):
+                value = [value]
+        else:
+            value = _parse_value(raw)
+
+        return validate_value(value, schema_item)
+
+    def _get_schema(self, module_name):
+        return get_config_schema(module_name)
+
+    def _collect_option_keys(self, module_cfg, schema):
+        keys = list(schema.keys()) if isinstance(schema, dict) else []
+        extras = [k for k in module_cfg.keys() if k not in keys]
+        keys.extend(sorted(extras))
+        return keys
+
+    def _format_module_config_text(self, module_name, module_cfg, schema):
         title = (
             "<blockquote>"
             "<emoji id=5877396173135811032>⚙️</emoji> "
             f"<b>Module config:</b> <code>{html.escape(module_name)}</code>"
             "</blockquote>"
         )
-        if module_cfg:
+        options = self._collect_option_keys(module_cfg, schema)
+        if options:
             lines = []
-            for key in sorted(module_cfg.keys()):
-                value = module_cfg.get(key)
-                line = f"{key} = {_stringify_value(value)}"
+            for key in options:
+                schema_item = schema.get(key, {}) if isinstance(schema, dict) else {}
+                value = module_cfg.get(key, schema_item.get("default"))
+                value_text = _mask_value(value) if schema_item.get("hidden") else _format_value(value)
+                line = f"{key} = {value_text}"
                 lines.append(line)
             body = f"<blockquote expandable><code>{html.escape(chr(10).join(lines))}</code></blockquote>"
         else:
@@ -329,42 +377,125 @@ class InlineBotService:
             ]
         )
 
-    def _build_module_keyboard(self, module_name, module_cfg):
+    def _build_module_keyboard(self, module_name, options, module_cfg, schema):
         rows = []
-        for key in sorted(module_cfg.keys()):
-            value = module_cfg.get(key)
-            toggle_cb = _make_callback_data("toggle", module_name, key) if isinstance(value, bool) else None
-            delete_cb = _make_callback_data("del", module_name, key)
-            edit_query = f"cfg set {module_name} {key} "
-
-            if toggle_cb and delete_cb:
-                rows.append(
-                    [
-                        InlineKeyboardButton(f"🔁 {key}", callback_data=toggle_cb),
-                        InlineKeyboardButton(f"🗑 {key}", callback_data=delete_cb),
-                    ]
-                )
-            elif delete_cb:
-                rows.append(
-                    [
-                        InlineKeyboardButton(f"✏️ {key}", switch_inline_query_current_chat=edit_query),
-                        InlineKeyboardButton(f"🗑 {key}", callback_data=delete_cb),
-                    ]
-                )
+        for key in options:
+            schema_item = schema.get(key, {}) if isinstance(schema, dict) else {}
+            type_id = schema_item.get("type")
+            if type_id is None:
+                current = module_cfg.get(key, schema_item.get("default"))
+                if isinstance(current, bool):
+                    type_id = "bool"
+            option_cb = _make_callback_data("cfg", "option", module_name, key)
+            if option_cb:
+                option_btn = InlineKeyboardButton(f"⚙️ {key}", callback_data=option_cb)
             else:
-                rows.append(
-                    [InlineKeyboardButton(f"✏️ {key}", switch_inline_query_current_chat=edit_query)]
+                option_btn = InlineKeyboardButton(
+                    f"⚙️ {key}",
+                    switch_inline_query_current_chat=f"cfg {module_name} {key}",
                 )
+
+            second_btn = None
+            if type_id == "bool":
+                toggle_cb = _make_callback_data("cfg", "toggle", module_name, key)
+                if toggle_cb:
+                    current = module_cfg.get(key, schema_item.get("default"))
+                    label = "✅ True" if current else "❌ False"
+                    second_btn = InlineKeyboardButton(label, callback_data=toggle_cb)
+            else:
+                second_btn = InlineKeyboardButton(
+                    "✏️",
+                    switch_inline_query_current_chat=f"cfg set {module_name} {key} ",
+                )
+
+            if second_btn:
+                rows.append([option_btn, second_btn])
+            else:
+                rows.append([option_btn])
 
         rows.append([InlineKeyboardButton("➕ Add key", switch_inline_query_current_chat=f"cfg set {module_name} ")])
-        reset_cb = _make_callback_data("reset", module_name)
-        if reset_cb and module_cfg:
+        reset_cb = _make_callback_data("cfg", "resetmod", module_name)
+        if reset_cb and options:
             rows.append([InlineKeyboardButton("🧹 Reset module", callback_data=reset_cb)])
-        refresh_cb = _make_callback_data("refresh", module_name)
+        refresh_cb = _make_callback_data("cfg", "module", module_name)
         if refresh_cb:
             rows.append([InlineKeyboardButton("🔄 Refresh", callback_data=refresh_cb)])
 
         return InlineKeyboardMarkup(rows) if rows else None
+
+    def _render_module_view(self, module_name):
+        cfg = self._load_config()
+        section = cfg.get(CONFIG_SECTION, {})
+        module_cfg = section.get(module_name, {}) if isinstance(section, dict) else {}
+        if not isinstance(module_cfg, dict):
+            module_cfg = {}
+        schema = self._get_schema(module_name)
+        options = self._collect_option_keys(module_cfg, schema)
+        text = self._format_module_config_text(module_name, module_cfg, schema)
+        markup = self._build_module_keyboard(module_name, options, module_cfg, schema)
+        return text, markup
+
+    def _render_option_view(self, module_name, option):
+        cfg = self._load_config()
+        section = cfg.get(CONFIG_SECTION, {})
+        module_cfg = section.get(module_name, {}) if isinstance(section, dict) else {}
+        if not isinstance(module_cfg, dict):
+            module_cfg = {}
+        schema = self._get_schema(module_name)
+        schema_item = schema.get(option, {}) if isinstance(schema, dict) else {}
+        current = module_cfg.get(option, schema_item.get("default"))
+        default = schema_item.get("default")
+        hidden = bool(schema_item.get("hidden"))
+        type_id = schema_item.get("type") or ("bool" if isinstance(current, bool) else "str")
+        doc = schema_item.get("doc") or ""
+
+        current_text = _mask_value(current) if hidden else _format_value(current)
+        default_text = _mask_value(default) if hidden else _format_value(default)
+
+        lines = [
+            "<blockquote><emoji id=5877396173135811032>⚙️</emoji> <b>Config option</b></blockquote>",
+            f"<b>Module:</b> <code>{html.escape(module_name)}</code>",
+            f"<b>Key:</b> <code>{html.escape(option)}</code>",
+        ]
+        if doc:
+            lines.append(f"<b>Description:</b> {html.escape(doc)}")
+        lines.append(f"<b>Type:</b> <code>{html.escape(str(type_id))}</code>")
+        lines.append(f"<b>Default:</b> <code>{html.escape(default_text)}</code>")
+        lines.append(f"<b>Current:</b> <code>{html.escape(current_text)}</code>")
+        text = _truncate("\n".join(lines))
+
+        rows = []
+        if type_id == "bool":
+            toggle_cb = _make_callback_data("cfg", "toggle", module_name, option)
+            if toggle_cb:
+                label = "✅ True" if current else "❌ False"
+                rows.append([InlineKeyboardButton(label, callback_data=toggle_cb)])
+        elif type_id in {"choice", "multi_choice"}:
+            choices = schema_item.get("choices") or []
+            for idx, value in enumerate(choices):
+                is_selected = value == current if type_id == "choice" else value in (current or [])
+                mark = "☑️" if is_selected else "🔘" if type_id == "choice" else "◻️"
+                cb_action = "choice" if type_id == "choice" else "mchoice"
+                cb_data = _make_callback_data("cfg", cb_action, module_name, option, idx)
+                if cb_data:
+                    rows.append([InlineKeyboardButton(f"{mark} {value}", callback_data=cb_data)])
+        rows.append(
+            [
+                InlineKeyboardButton(
+                    "✏️ Set value",
+                    switch_inline_query_current_chat=f"cfg set {module_name} {option} ",
+                )
+            ]
+        )
+        reset_cb = _make_callback_data("cfg", "reset", module_name, option)
+        if reset_cb:
+            rows.append([InlineKeyboardButton("🧹 Reset to default", callback_data=reset_cb)])
+        back_cb = _make_callback_data("cfg", "module", module_name)
+        if back_cb:
+            rows.append([InlineKeyboardButton("⬅️ Back", callback_data=back_cb)])
+
+        markup = InlineKeyboardMarkup(rows) if rows else None
+        return text, markup
 
     def read_log_lines(self, num_lines=20):
         if not os.path.exists(LOG_FILE):
@@ -489,19 +620,33 @@ class InlineBotService:
                     )
                 )
                 return results
-            parsed = _parse_value(value)
-            text = (
-                "<blockquote><emoji id=5776375003280838798>✅</emoji> <b>Config updated</b></blockquote>\n\n"
-                f"<b>Module:</b> <code>{html.escape(module_name)}</code>\n"
-                f"<b>Key:</b> <code>{html.escape(key)}</code>\n"
-                f"<b>Value:</b> <code>{html.escape(_stringify_value(parsed))}</code>"
-            )
+            schema = self._get_schema(module_name)
+            schema_item = schema.get(key) if isinstance(schema, dict) else None
+            try:
+                parsed = self._parse_input_value(value, schema_item)
+                parsed_text = _stringify_value(parsed)
+                text = (
+                    "<blockquote><emoji id=5776375003280838798>✅</emoji> <b>Config updated</b></blockquote>\n\n"
+                    f"<b>Module:</b> <code>{html.escape(module_name)}</code>\n"
+                    f"<b>Key:</b> <code>{html.escape(key)}</code>\n"
+                    f"<b>Value:</b> <code>{html.escape(parsed_text)}</code>"
+                )
+                title = f"✅ Set {module_name}.{key}"
+                description = parsed_text
+            except Exception as e:
+                text = (
+                    "<blockquote><emoji id=5778527486270770928>❌</emoji> <b>Validation error</b></blockquote>\n\n"
+                    f"<b>Key:</b> <code>{html.escape(key)}</code>\n"
+                    f"<b>Error:</b> <code>{html.escape(str(e))}</code>"
+                )
+                title = f"❌ Invalid {module_name}.{key}"
+                description = "Validation error"
             results.append(
                 InlineQueryResultArticle(
                     id=_make_result_id("cfg", "set", module_name, key),
-                    title=f"✅ Set {module_name}.{key}",
+                    title=title,
                     input_message_content=InputTextMessageContent(text, parse_mode=ParseMode.HTML),
-                    description=str(parsed),
+                    description=description,
                 )
             )
             return results
@@ -548,16 +693,46 @@ class InlineBotService:
                 )
                 return results
             module_name = tokens[2]
-            text = (
-                "<blockquote><emoji id=5776375003280838798>✅</emoji> <b>Module config reset</b></blockquote>\n\n"
-                f"<b>Module:</b> <code>{html.escape(module_name)}</code>"
-            )
+            if len(tokens) >= 4:
+                option = tokens[3]
+                text = (
+                    "<blockquote><emoji id=5776375003280838798>✅</emoji> <b>Option reset</b></blockquote>\n\n"
+                    f"<b>Module:</b> <code>{html.escape(module_name)}</code>\n"
+                    f"<b>Key:</b> <code>{html.escape(option)}</code>"
+                )
+                title = f"🧹 Reset {module_name}.{option}"
+                description = "Reset option"
+                result_id = _make_result_id("cfg", "reset", module_name, option)
+            else:
+                text = (
+                    "<blockquote><emoji id=5776375003280838798>✅</emoji> <b>Module config reset</b></blockquote>\n\n"
+                    f"<b>Module:</b> <code>{html.escape(module_name)}</code>"
+                )
+                title = f"🧹 Reset {module_name}"
+                description = "Remove all keys"
+                result_id = _make_result_id("cfg", "reset", module_name)
+
             results.append(
                 InlineQueryResultArticle(
-                    id=_make_result_id("cfg", "reset", module_name),
-                    title=f"🧹 Reset {module_name}",
+                    id=result_id,
+                    title=title,
                     input_message_content=InputTextMessageContent(text, parse_mode=ParseMode.HTML),
-                    description="Remove all keys",
+                    description=description,
+                )
+            )
+            return results
+
+        if len(tokens) >= 3:
+            module_name = tokens[1]
+            option = tokens[2]
+            text, markup = self._render_option_view(module_name, option)
+            results.append(
+                InlineQueryResultArticle(
+                    id=_make_result_id("cfg", module_name, option),
+                    title=f"⚙️ {module_name}.{option}",
+                    input_message_content=InputTextMessageContent(text, parse_mode=ParseMode.HTML),
+                    description="Option settings",
+                    reply_markup=markup,
                 )
             )
             return results
@@ -568,8 +743,10 @@ class InlineBotService:
         module_cfg = section.get(module_name, {}) if isinstance(section, dict) else {}
         if not isinstance(module_cfg, dict):
             module_cfg = {}
-        text = self._format_module_config_text(module_name, module_cfg)
-        markup = self._build_module_keyboard(module_name, module_cfg)
+        schema = self._get_schema(module_name)
+        options = self._collect_option_keys(module_cfg, schema)
+        text = self._format_module_config_text(module_name, module_cfg, schema)
+        markup = self._build_module_keyboard(module_name, options, module_cfg, schema)
         results.append(
             InlineQueryResultArticle(
                 id=_make_result_id("cfg", module_name, "detail"),
@@ -696,7 +873,12 @@ class InlineBotService:
             key = tokens[3]
             value = " ".join(tokens[4:]).strip()
             if value:
-                parsed = _parse_value(value)
+                schema = self._get_schema(module_name)
+                schema_item = schema.get(key) if isinstance(schema, dict) else None
+                try:
+                    parsed = self._parse_input_value(value, schema_item)
+                except Exception:
+                    return
                 self._set_module_config_value(module_name, key, parsed)
             return
 
@@ -708,7 +890,11 @@ class InlineBotService:
 
         if sub in {"reset", "clear"} and len(tokens) >= 3:
             module_name = tokens[2]
-            self._reset_module_config(module_name)
+            if len(tokens) >= 4:
+                option = tokens[3]
+                self._reset_option(module_name, option)
+            else:
+                self._reset_module_config(module_name)
             return
 
     async def _callback_query_handler(self, client, callback_query):
@@ -726,6 +912,7 @@ class InlineBotService:
         action = parts[1]
         module_name = parts[2]
         key = parts[3] if len(parts) > 3 else None
+        idx = parts[4] if len(parts) > 4 else None
 
         cfg = self._load_config()
         section = cfg.get(CONFIG_SECTION, {})
@@ -733,29 +920,63 @@ class InlineBotService:
         if not isinstance(module_cfg, dict):
             module_cfg = {}
 
-        if action == "toggle" and key:
-            value = module_cfg.get(key)
+        schema = self._get_schema(module_name)
+
+        if action == "module":
+            text, markup = self._render_module_view(module_name)
+        elif action == "option" and key:
+            text, markup = self._render_option_view(module_name, key)
+        elif action == "toggle" and key:
+            schema_item = schema.get(key, {}) if isinstance(schema, dict) else {}
+            value = module_cfg.get(key, schema_item.get("default", False))
             if isinstance(value, bool):
                 self._set_module_config_value(module_name, key, not value)
             else:
                 await callback_query.answer("Not a boolean value", show_alert=True)
                 return
+            text, markup = self._render_option_view(module_name, key)
+        elif action == "choice" and key and idx is not None:
+            schema_item = schema.get(key, {}) if isinstance(schema, dict) else {}
+            choices = schema_item.get("choices") or []
+            try:
+                choice_idx = int(idx)
+                value = choices[choice_idx]
+            except Exception:
+                await callback_query.answer("Invalid choice", show_alert=True)
+                return
+            self._set_module_config_value(module_name, key, value)
+            text, markup = self._render_option_view(module_name, key)
+        elif action == "mchoice" and key and idx is not None:
+            schema_item = schema.get(key, {}) if isinstance(schema, dict) else {}
+            choices = schema_item.get("choices") or []
+            try:
+                choice_idx = int(idx)
+                value = choices[choice_idx]
+            except Exception:
+                await callback_query.answer("Invalid choice", show_alert=True)
+                return
+            current = module_cfg.get(key, schema_item.get("default", []))
+            if not isinstance(current, list):
+                current = []
+            if value in current:
+                current = [item for item in current if item != value]
+            else:
+                current = current + [value]
+            self._set_module_config_value(module_name, key, current)
+            text, markup = self._render_option_view(module_name, key)
         elif action == "del" and key:
             self._delete_module_config_key(module_name, key)
-        elif action == "reset":
+            text, markup = self._render_module_view(module_name)
+        elif action == "reset" and key:
+            self._reset_option(module_name, key)
+            text, markup = self._render_option_view(module_name, key)
+        elif action == "resetmod":
             self._reset_module_config(module_name)
+            text, markup = self._render_module_view(module_name)
         elif action == "refresh":
-            pass
+            text, markup = self._render_module_view(module_name)
         else:
             return
-
-        cfg = self._load_config()
-        section = cfg.get(CONFIG_SECTION, {})
-        module_cfg = section.get(module_name, {}) if isinstance(section, dict) else {}
-        if not isinstance(module_cfg, dict):
-            module_cfg = {}
-        text = self._format_module_config_text(module_name, module_cfg)
-        markup = self._build_module_keyboard(module_name, module_cfg)
 
         try:
             await self._edit_inline_message(client, callback_query, text, markup)

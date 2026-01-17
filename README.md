@@ -82,6 +82,13 @@ cfg del <module> <key> — удалить ключ
 cfg reset <module> — очистить модуль
 
 Для модулей есть helper ModuleConfig в module_config.py.
+Можно описывать схему опций в модуле:
+
+CONFIG_SCHEMA = {
+    "enabled": {"type": "bool", "default": True, "doc": "Включить модуль"},
+    "mode": {"type": "choice", "default": "auto", "choices": ["auto", "manual"]},
+    "admins": {"type": "multi_choice", "default": [], "choices": [1, 2, 3]},
+}
 ---
 
 ▌⚙ Использование
