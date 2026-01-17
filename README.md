@@ -65,6 +65,22 @@ python inline_bot.py
 - FORELKA_INLINE_TOKEN
 - FORELKA_INLINE_OWNER_ID
 - FORELKA_CONFIG (путь к config-<id>.json)
+
+Inline-бот теперь работает на kurigram и требует API ID/HASH:
+- автоматически из telegram_api-<id>.json
+- или через FORELKA_API_ID / FORELKA_API_HASH
+
+▌⚙ Inline конфиг модулей
+
+В инлайн-боте доступны команды:
+
+cfg — список модулей  
+cfg <module> — показать настройки  
+cfg set <module> <key> <value> — задать значение  
+cfg del <module> <key> — удалить ключ  
+cfg reset <module> — очистить модуль
+
+Для модулей есть helper ModuleConfig в module_config.py.
 ---
 
 ▌⚙ Использование
