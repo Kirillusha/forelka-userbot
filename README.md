@@ -48,7 +48,23 @@ python main.py
 
 
 
-(инлайн бот подключается отдельно, python inline_bot.py) 
+(инлайн бот подключается отдельно, python inline_bot.py)
+
+▌🤖 Inline Bot (BotFather)
+
+Чтобы получить токен, запустите юзербот и выполните:
+
+.inlinebot setup
+
+Команда создаст бот через BotFather (если нужно), включит inline mode и сохранит токен
+в config-<id>.json. Далее запускайте inline-бота:
+
+python inline_bot.py
+
+При необходимости можно задать переменные окружения:
+- FORELKA_INLINE_TOKEN
+- FORELKA_INLINE_OWNER_ID
+- FORELKA_CONFIG (путь к config-<id>.json)
 ---
 
 ▌⚙ Использование

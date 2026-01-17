@@ -1,11 +1,74 @@
+import json
 import telebot
 from telebot.types import InlineQueryResultArticle, InputTextMessageContent, InlineKeyboardMarkup, InlineKeyboardButton
 import os
 import time
 
-TOKEN = "7696280451:AAFA70tdSTfOXpdS97v8PIkcOqRhWeIvbLg"
 LOG_FILE = 'forelka.log'
-OWNER_ID = 5941415177  # <--- вставь сюда свой Telegram ID
+
+def _find_config_file():
+    explicit = os.environ.get("FORELKA_CONFIG", "").strip()
+    if explicit and os.path.exists(explicit):
+        return explicit
+    candidates = [f for f in os.listdir() if f.startswith("config-") and f.endswith(".json")]
+    if not candidates:
+        return None
+    candidates.sort(key=lambda p: os.path.getmtime(p))
+    return candidates[-1]
+
+
+def _owner_id_from_config_path(path):
+    if not path:
+        return None
+    try:
+        base = os.path.splitext(os.path.basename(path))[0]
+        return int(base.split("-", 1)[1])
+    except Exception:
+        return None
+
+
+def _load_inline_settings():
+    config_path = _find_config_file()
+    cfg = {}
+    if config_path and os.path.exists(config_path):
+        try:
+            with open(config_path, "r", encoding="utf-8") as f:
+                cfg = json.load(f)
+        except Exception:
+            cfg = {}
+
+    token = os.environ.get("FORELKA_INLINE_TOKEN") or cfg.get("inline_bot_token")
+    owner_id = os.environ.get("FORELKA_INLINE_OWNER_ID")
+    if owner_id:
+        try:
+            owner_id = int(owner_id)
+        except Exception:
+            owner_id = None
+    if not owner_id:
+        owner_id = _owner_id_from_config_path(config_path)
+    if not owner_id:
+        owners = cfg.get("owners")
+        if isinstance(owners, list) and owners:
+            try:
+                owner_id = int(owners[0])
+            except Exception:
+                owner_id = None
+
+    return token, owner_id, config_path
+
+
+TOKEN, OWNER_ID, CONFIG_PATH = _load_inline_settings()
+
+if not TOKEN:
+    raise RuntimeError(
+        "Inline bot token not set. Run .inlinebot setup in userbot "
+        "or set FORELKA_INLINE_TOKEN."
+    )
+if not OWNER_ID:
+    raise RuntimeError(
+        "Owner ID not set. Set FORELKA_INLINE_OWNER_ID "
+        "or ensure config-<id>.json exists."
+    )
 
 bot = telebot.TeleBot(TOKEN)
 START_TIME = time.time()
