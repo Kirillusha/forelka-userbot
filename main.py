@@ -486,55 +486,50 @@ async def maybe_prompt_auto_backup(client, config: Dict[str, Any], config_path: 
         "<code>.autobackup &lt;hours&gt;</code>.</blockquote>"
     )
     inline_cfg = load_inline_config()
-    if inline_cfg.get("token") and inline_cfg.get("owner_id"):
-        try:
-            keyboard = {
-                "inline_keyboard": [
-                    [
-                        {"text": "1h", "callback_data": "autobackup:set:1"},
-                        {"text": "2h", "callback_data": "autobackup:set:2"},
-                        {"text": "3h", "callback_data": "autobackup:set:3"},
-                    ],
-                    [
-                        {"text": "4h", "callback_data": "autobackup:set:4"},
-                        {"text": "6h", "callback_data": "autobackup:set:6"},
-                        {"text": "12h", "callback_data": "autobackup:set:12"},
-                    ],
-                    [
-                        {"text": "Свое значение", "callback_data": "autobackup:custom"},
-                        {"text": "Отключить", "callback_data": "autobackup:off"},
-                    ],
-                ]
-            }
-            payload = {
-                "chat_id": inline_cfg["owner_id"],
-                "text": text,
-                "parse_mode": "HTML",
-                "reply_markup": keyboard,
-            }
-            resp = requests.post(
-                f"https://api.telegram.org/bot{inline_cfg['token']}/sendMessage",
-                json=payload,
-                timeout=10,
-            )
-            data = resp.json() if resp.ok else {}
-            if data.get("ok"):
-                msg_id = data.get("result", {}).get("message_id")
-                config["auto_backup_prompted"] = True
-                if msg_id:
-                    config["auto_backup_prompt_msg_id"] = msg_id
-                save_config(config_path, config)
-                return
-        except Exception:
-            pass
-
+    if not inline_cfg.get("token") or not inline_cfg.get("owner_id"):
+        print("[autobackup] Inline bot not configured. Prompt skipped.")
+        return
     try:
-        msg = await client.send_message("me", text, parse_mode=ParseMode.HTML)
-        config["auto_backup_prompted"] = True
-        config["auto_backup_prompt_msg_id"] = msg.id
-        save_config(config_path, config)
-    except Exception:
-        pass
+        keyboard = {
+            "inline_keyboard": [
+                [
+                    {"text": "1h", "callback_data": "autobackup:set:1"},
+                    {"text": "2h", "callback_data": "autobackup:set:2"},
+                    {"text": "3h", "callback_data": "autobackup:set:3"},
+                ],
+                [
+                    {"text": "4h", "callback_data": "autobackup:set:4"},
+                    {"text": "6h", "callback_data": "autobackup:set:6"},
+                    {"text": "12h", "callback_data": "autobackup:set:12"},
+                ],
+                [
+                    {"text": "Свое значение", "callback_data": "autobackup:custom"},
+                    {"text": "Отключить", "callback_data": "autobackup:off"},
+                ],
+            ]
+        }
+        payload = {
+            "chat_id": inline_cfg["owner_id"],
+            "text": text,
+            "parse_mode": "HTML",
+            "reply_markup": keyboard,
+        }
+        resp = requests.post(
+            f"https://api.telegram.org/bot{inline_cfg['token']}/sendMessage",
+            json=payload,
+            timeout=10,
+        )
+        data = resp.json() if resp.ok else {}
+        if data.get("ok"):
+            msg_id = data.get("result", {}).get("message_id")
+            config["auto_backup_prompted"] = True
+            if msg_id:
+                config["auto_backup_prompt_msg_id"] = msg_id
+            save_config(config_path, config)
+            return
+        print(f"[autobackup] Inline bot prompt failed: {data}")
+    except Exception as e:
+        print(f"[autobackup] Inline bot prompt error: {e}")
 
 
 async def auto_backup_reply_handler(client, message) -> None:

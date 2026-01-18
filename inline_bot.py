@@ -1,14 +1,20 @@
+import asyncio
 import json
 import os
 import time
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Set, Tuple
 
-import telebot
-from telebot.types import (
+from aiogram import Bot, Dispatcher
+from aiogram.enums import ParseMode
+from aiogram.filters import Command
+from aiogram.types import (
+    CallbackQuery,
+    InlineKeyboardButton,
+    InlineKeyboardMarkup,
+    InlineQuery,
     InlineQueryResultArticle,
     InputTextMessageContent,
-    InlineKeyboardMarkup,
-    InlineKeyboardButton,
+    Message,
 )
 
 DEFAULT_CONFIG_PATH = os.environ.get("FORELKA_INLINE_CONFIG", "inline_bot.json")
@@ -16,10 +22,8 @@ DEFAULT_LOG_FILE = "forelka.log"
 DEFAULT_RUNTIME_FILE = "runtime.json"
 DEFAULT_HELP_FILE = "inline_help.json"
 
-LOG_CACHE_TTL = 2
 RUNTIME_CACHE_TTL = 2
 HELP_CACHE_TTL = 6
-
 INLINE_CACHE_TTL = 20
 
 
@@ -107,55 +111,65 @@ def _load_config(path: str) -> Dict[str, Any]:
 
 
 def _build_home_keyboard() -> InlineKeyboardMarkup:
-    keyboard = InlineKeyboardMarkup(row_width=2)
-    keyboard.add(
-        InlineKeyboardButton("📊 Статус", callback_data="nav:status"),
-        InlineKeyboardButton("📶 Пинг", callback_data="nav:ping"),
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(text="📊 Статус", callback_data="nav:status"),
+                InlineKeyboardButton(text="📶 Пинг", callback_data="nav:ping"),
+            ],
+            [
+                InlineKeyboardButton(text="📚 Помощь", callback_data="help:page:0"),
+                InlineKeyboardButton(text="🧾 Логи", callback_data="nav:logs"),
+            ],
+            [InlineKeyboardButton(text="🧰 Автобекапы", callback_data="nav:autobackup")],
+        ]
     )
-    keyboard.add(
-        InlineKeyboardButton("📚 Помощь", callback_data="help:page:0"),
-        InlineKeyboardButton("🧾 Логи", callback_data="nav:logs"),
-    )
-    keyboard.add(InlineKeyboardButton("🧰 Автобекапы", callback_data="nav:autobackup"))
-    return keyboard
 
 
 def _build_inline_keyboard() -> InlineKeyboardMarkup:
-    keyboard = InlineKeyboardMarkup(row_width=2)
-    keyboard.add(
-        InlineKeyboardButton("🧾 Последние строки", switch_inline_query_current_chat=""),
-        InlineKeyboardButton("🔍 Поиск", switch_inline_query_current_chat="search "),
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="🧾 Последние строки", switch_inline_query_current_chat=""
+                ),
+                InlineKeyboardButton(
+                    text="🔍 Поиск", switch_inline_query_current_chat="search "
+                ),
+            ],
+            [
+                InlineKeyboardButton(text="📊 Статус", switch_inline_query_current_chat="status"),
+                InlineKeyboardButton(text="📚 Помощь", switch_inline_query_current_chat="help"),
+            ],
+        ]
     )
-    keyboard.add(
-        InlineKeyboardButton("📊 Статус", switch_inline_query_current_chat="status"),
-        InlineKeyboardButton("📚 Помощь", switch_inline_query_current_chat="help"),
-    )
-    return keyboard
 
 
 def _build_help_keyboard(page: int, total_pages: int) -> InlineKeyboardMarkup:
-    keyboard = InlineKeyboardMarkup(row_width=3)
-    nav_row: List[InlineKeyboardButton] = []
+    row: List[InlineKeyboardButton] = []
     if total_pages > 1:
         if page > 0:
-            nav_row.append(InlineKeyboardButton("⬅️ Назад", callback_data=f"help:page:{page - 1}"))
-        nav_row.append(InlineKeyboardButton(f"{page + 1}/{total_pages}", callback_data="noop"))
+            row.append(InlineKeyboardButton("⬅️ Назад", callback_data=f"help:page:{page - 1}"))
+        row.append(InlineKeyboardButton(f"{page + 1}/{total_pages}", callback_data="noop"))
         if page < total_pages - 1:
-            nav_row.append(InlineKeyboardButton("➡️ Далее", callback_data=f"help:page:{page + 1}"))
-    if nav_row:
-        keyboard.row(*nav_row)
-    keyboard.add(InlineKeyboardButton("✖️ Закрыть", callback_data="help:close"))
-    return keyboard
+            row.append(InlineKeyboardButton("➡️ Далее", callback_data=f"help:page:{page + 1}"))
+    keyboard_rows: List[List[InlineKeyboardButton]] = []
+    if row:
+        keyboard_rows.append(row)
+    keyboard_rows.append([InlineKeyboardButton("✖️ Закрыть", callback_data="help:close")])
+    return InlineKeyboardMarkup(inline_keyboard=keyboard_rows)
 
 
 def _build_config_keyboard() -> InlineKeyboardMarkup:
-    keyboard = InlineKeyboardMarkup(row_width=2)
-    keyboard.add(
-        InlineKeyboardButton("🔄 Обновить", callback_data="nav:config"),
-        InlineKeyboardButton("📚 Помощь", callback_data="help:page:0"),
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(text="🔄 Обновить", callback_data="nav:config"),
+                InlineKeyboardButton(text="📚 Помощь", callback_data="help:page:0"),
+            ],
+            [InlineKeyboardButton(text="✖️ Закрыть", callback_data="help:close")],
+        ]
     )
-    keyboard.add(InlineKeyboardButton("✖️ Закрыть", callback_data="help:close"))
-    return keyboard
 
 
 def _build_status_text(runtime: Dict[str, Any]) -> str:
@@ -220,23 +234,25 @@ def _build_autobackup_text(config: Dict[str, Any]) -> str:
 
 
 def _build_autobackup_keyboard() -> InlineKeyboardMarkup:
-    keyboard = InlineKeyboardMarkup(row_width=3)
-    keyboard.add(
-        InlineKeyboardButton("1h", callback_data="autobackup:set:1"),
-        InlineKeyboardButton("2h", callback_data="autobackup:set:2"),
-        InlineKeyboardButton("3h", callback_data="autobackup:set:3"),
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton("1h", callback_data="autobackup:set:1"),
+                InlineKeyboardButton("2h", callback_data="autobackup:set:2"),
+                InlineKeyboardButton("3h", callback_data="autobackup:set:3"),
+            ],
+            [
+                InlineKeyboardButton("4h", callback_data="autobackup:set:4"),
+                InlineKeyboardButton("6h", callback_data="autobackup:set:6"),
+                InlineKeyboardButton("12h", callback_data="autobackup:set:12"),
+            ],
+            [
+                InlineKeyboardButton("Свое значение", callback_data="autobackup:custom"),
+                InlineKeyboardButton("Отключить", callback_data="autobackup:off"),
+            ],
+            [InlineKeyboardButton("⬅️ Назад", callback_data="nav:home")],
+        ]
     )
-    keyboard.add(
-        InlineKeyboardButton("4h", callback_data="autobackup:set:4"),
-        InlineKeyboardButton("6h", callback_data="autobackup:set:6"),
-        InlineKeyboardButton("12h", callback_data="autobackup:set:12"),
-    )
-    keyboard.add(
-        InlineKeyboardButton("Свое значение", callback_data="autobackup:custom"),
-        InlineKeyboardButton("Отключить", callback_data="autobackup:off"),
-    )
-    keyboard.add(InlineKeyboardButton("⬅️ Назад", callback_data="nav:home"))
-    return keyboard
 
 
 def _build_help_text(pages: List[str], page: int) -> str:
@@ -257,17 +273,18 @@ def _build_config_text(owner_id: int, log_path: str, runtime_path: str, help_pat
     ).format(owner_id, log_path, runtime_path, help_path)
 
 
-def run_bot(config_path: str = DEFAULT_CONFIG_PATH) -> None:
+async def _run_bot(config_path: str) -> None:
     cfg = _load_config(config_path)
     owner_id = int(cfg["owner_id"])
     log_path = cfg.get("log_file", DEFAULT_LOG_FILE)
     runtime_cache = JsonCache(cfg.get("runtime_file", DEFAULT_RUNTIME_FILE), RUNTIME_CACHE_TTL)
     help_cache = JsonCache(cfg.get("help_file", DEFAULT_HELP_FILE), HELP_CACHE_TTL)
     user_config_path = f"config-{owner_id}.json"
-    pending_custom = set()
+    pending_custom: Set[int] = set()
+    inline_cache: Dict[str, Tuple[float, List[InlineQueryResultArticle]]] = {}
 
-    bot = telebot.TeleBot(cfg["token"], parse_mode="HTML")
-    inline_cache: Dict[str, Any] = {}
+    bot = Bot(cfg["token"], parse_mode=ParseMode.HTML)
+    dp = Dispatcher()
 
     def _is_owner(user_id: int) -> bool:
         return user_id == owner_id
@@ -296,93 +313,99 @@ def run_bot(config_path: str = DEFAULT_CONFIG_PATH) -> None:
         except Exception:
             pass
 
-    @bot.message_handler(commands=["start"])
-    def handle_start(message):
-        if not _is_owner(message.from_user.id):
+    async def _edit_message(query: CallbackQuery, text: str, markup: InlineKeyboardMarkup):
+        if query.message:
+            await query.message.edit_text(text, reply_markup=markup)
+        else:
+            await bot.send_message(query.from_user.id, text, reply_markup=markup)
+
+    @dp.message(Command("start"))
+    async def handle_start(message: Message):
+        if not message.from_user or not _is_owner(message.from_user.id):
             return
         text = (
             "<b>Forelka Inline Bot</b>\n"
             "<blockquote>Используйте кнопки ниже для управления юзерботом.</blockquote>"
         )
-        bot.send_message(message.chat.id, text, reply_markup=_build_home_keyboard())
+        await message.answer(text, reply_markup=_build_home_keyboard())
 
-    @bot.message_handler(commands=["ping"])
-    def handle_ping(message):
-        if not _is_owner(message.from_user.id):
+    @dp.message(Command("ping"))
+    async def handle_ping(message: Message):
+        if not message.from_user or not _is_owner(message.from_user.id):
             return
-        bot.send_message(message.chat.id, _build_ping_text(_runtime()))
+        await message.answer(_build_ping_text(_runtime()))
 
-    @bot.message_handler(commands=["status"])
-    def handle_status(message):
-        if not _is_owner(message.from_user.id):
+    @dp.message(Command("status"))
+    async def handle_status(message: Message):
+        if not message.from_user or not _is_owner(message.from_user.id):
             return
-        bot.send_message(message.chat.id, _build_status_text(_runtime()))
+        await message.answer(_build_status_text(_runtime()))
 
-    @bot.message_handler(commands=["help"])
-    def handle_help(message):
-        if not _is_owner(message.from_user.id):
+    @dp.message(Command("help"))
+    async def handle_help(message: Message):
+        if not message.from_user or not _is_owner(message.from_user.id):
             return
         pages = _get_help_pages()
         text = _build_help_text(pages, 0)
-        bot.send_message(message.chat.id, text, reply_markup=_build_help_keyboard(0, len(pages)))
+        await message.answer(text, reply_markup=_build_help_keyboard(0, len(pages)))
 
-    @bot.message_handler(commands=["autobackup"])
-    def handle_autobackup(message):
-        if not _is_owner(message.from_user.id):
+    @dp.message(Command("autobackup"))
+    async def handle_autobackup(message: Message):
+        if not message.from_user or not _is_owner(message.from_user.id):
             return
         cfg = _load_user_config()
-        bot.send_message(
-            message.chat.id,
-            _build_autobackup_text(cfg),
-            reply_markup=_build_autobackup_keyboard(),
-        )
+        await message.answer(_build_autobackup_text(cfg), reply_markup=_build_autobackup_keyboard())
 
-    @bot.message_handler(func=lambda message: message.from_user and message.from_user.id in pending_custom)
-    def handle_custom_hours(message):
+    @dp.message(Command("config"))
+    async def handle_config(message: Message):
+        if not message.from_user or not _is_owner(message.from_user.id):
+            return
+        text = _build_config_text(owner_id, log_path, runtime_cache.path, help_cache.path)
+        await message.answer(text, reply_markup=_build_config_keyboard())
+
+    @dp.message()
+    async def handle_custom_hours(message: Message):
+        if not message.from_user or message.from_user.id not in pending_custom:
+            return
         if not _is_owner(message.from_user.id):
             return
         raw = (message.text or "").strip()
         try:
             hours = int(raw)
         except ValueError:
-            return bot.send_message(
-                message.chat.id,
-                "<b>Неверное значение.</b>\n<blockquote>Введите целое число часов.</blockquote>",
+            await message.answer(
+                "<b>Неверное значение.</b>\n<blockquote>Введите целое число часов.</blockquote>"
             )
+            return
         if hours <= 0:
-            return bot.send_message(
-                message.chat.id,
-                "<b>Неверное значение.</b>\n<blockquote>Часы должны быть больше нуля.</blockquote>",
+            await message.answer(
+                "<b>Неверное значение.</b>\n<blockquote>Часы должны быть больше нуля.</blockquote>"
             )
+            return
         cfg = _load_user_config()
         cfg["auto_backup_hours"] = hours
         cfg["auto_backup_next_ts"] = int(time.time() + hours * 3600)
         cfg.pop("auto_backup_disabled", None)
         _save_user_config(cfg)
         pending_custom.discard(message.from_user.id)
-        bot.send_message(
-            message.chat.id,
-            f"<b>Автобекапы включены.</b>\n<blockquote>Интервал: <code>{hours}h</code></blockquote>",
+        await message.answer(
+            f"<b>Автобекапы включены.</b>\n<blockquote>Интервал: <code>{hours}h</code></blockquote>"
         )
 
-    @bot.message_handler(commands=["config"])
-    def handle_config(message):
-        if not _is_owner(message.from_user.id):
+    @dp.callback_query()
+    async def handle_callback(query: CallbackQuery):
+        if not query.from_user or not _is_owner(query.from_user.id):
+            await query.answer("Access denied.")
             return
-        text = _build_config_text(owner_id, log_path, runtime_cache.path, help_cache.path)
-        bot.send_message(message.chat.id, text, reply_markup=_build_config_keyboard())
-
-    @bot.callback_query_handler(func=lambda call: True)
-    def handle_callback(call):
-        if not _is_owner(call.from_user.id):
-            return bot.answer_callback_query(call.id, "Access denied.")
-        data = call.data or ""
+        data = query.data or ""
         if data.startswith("help:close"):
-            try:
-                bot.delete_message(call.message.chat.id, call.message.message_id)
-            except Exception:
-                pass
-            return bot.answer_callback_query(call.id)
+            if query.message:
+                try:
+                    await query.message.delete()
+                except Exception:
+                    pass
+            await query.answer()
+            return
         if data.startswith("help:page:"):
             try:
                 page = int(data.split(":")[-1])
@@ -390,119 +413,98 @@ def run_bot(config_path: str = DEFAULT_CONFIG_PATH) -> None:
                 page = 0
             pages = _get_help_pages()
             text = _build_help_text(pages, page)
-            bot.edit_message_text(
-                text,
-                call.message.chat.id,
-                call.message.message_id,
-                reply_markup=_build_help_keyboard(page, len(pages)),
-            )
-            return bot.answer_callback_query(call.id)
+            await _edit_message(query, text, _build_help_keyboard(page, len(pages)))
+            await query.answer()
+            return
         if data == "nav:status":
-            bot.edit_message_text(
-                _build_status_text(_runtime()),
-                call.message.chat.id,
-                call.message.message_id,
-                reply_markup=_build_home_keyboard(),
-            )
-            return bot.answer_callback_query(call.id)
+            await _edit_message(query, _build_status_text(_runtime()), _build_home_keyboard())
+            await query.answer()
+            return
         if data == "nav:home":
-            bot.edit_message_text(
+            await _edit_message(
+                query,
                 "<b>Forelka Inline Bot</b>\n<blockquote>Главное меню.</blockquote>",
-                call.message.chat.id,
-                call.message.message_id,
-                reply_markup=_build_home_keyboard(),
+                _build_home_keyboard(),
             )
-            return bot.answer_callback_query(call.id)
+            await query.answer()
+            return
         if data == "nav:ping":
-            bot.edit_message_text(
-                _build_ping_text(_runtime()),
-                call.message.chat.id,
-                call.message.message_id,
-                reply_markup=_build_home_keyboard(),
-            )
-            return bot.answer_callback_query(call.id)
+            await _edit_message(query, _build_ping_text(_runtime()), _build_home_keyboard())
+            await query.answer()
+            return
         if data == "nav:logs":
             text = _read_log_lines(log_path, 30)
-            bot.edit_message_text(
+            await _edit_message(
+                query,
                 "<b>Логи (последние 30 строк)</b>\n<blockquote expandable><code>{}</code></blockquote>".format(
                     text or "Нет данных"
                 ),
-                call.message.chat.id,
-                call.message.message_id,
-                reply_markup=_build_home_keyboard(),
+                _build_home_keyboard(),
             )
-            return bot.answer_callback_query(call.id)
+            await query.answer()
+            return
         if data == "nav:autobackup":
             cfg = _load_user_config()
-            bot.edit_message_text(
-                _build_autobackup_text(cfg),
-                call.message.chat.id,
-                call.message.message_id,
-                reply_markup=_build_autobackup_keyboard(),
-            )
-            return bot.answer_callback_query(call.id)
+            await _edit_message(query, _build_autobackup_text(cfg), _build_autobackup_keyboard())
+            await query.answer()
+            return
         if data.startswith("autobackup:set:"):
             try:
                 hours = int(data.split(":")[-1])
             except Exception:
-                return bot.answer_callback_query(call.id, "Неверное значение.")
+                await query.answer("Неверное значение.")
+                return
             cfg = _load_user_config()
             cfg["auto_backup_hours"] = hours
             cfg["auto_backup_next_ts"] = int(time.time() + hours * 3600)
             cfg.pop("auto_backup_disabled", None)
             _save_user_config(cfg)
-            bot.edit_message_text(
+            await _edit_message(
+                query,
                 "<b>Автобекапы включены.</b>\n"
                 f"<blockquote>Интервал: <code>{hours}h</code></blockquote>",
-                call.message.chat.id,
-                call.message.message_id,
-                reply_markup=_build_autobackup_keyboard(),
+                _build_autobackup_keyboard(),
             )
-            return bot.answer_callback_query(call.id, "Готово.")
+            await query.answer("Готово.")
+            return
         if data == "autobackup:off":
             cfg = _load_user_config()
             cfg["auto_backup_disabled"] = True
             cfg.pop("auto_backup_hours", None)
             cfg.pop("auto_backup_next_ts", None)
             _save_user_config(cfg)
-            bot.edit_message_text(
-                "<b>Автобекапы отключены.</b>",
-                call.message.chat.id,
-                call.message.message_id,
-                reply_markup=_build_autobackup_keyboard(),
+            await _edit_message(
+                query, "<b>Автобекапы отключены.</b>", _build_autobackup_keyboard()
             )
-            return bot.answer_callback_query(call.id, "Отключено.")
+            await query.answer("Отключено.")
+            return
         if data == "autobackup:custom":
-            pending_custom.add(call.from_user.id)
-            bot.send_message(
-                call.message.chat.id,
-                "<b>Введите своё значение в часах.</b>\n"
-                "<blockquote>Пример: <code>5</code></blockquote>",
+            pending_custom.add(query.from_user.id)
+            await bot.send_message(
+                query.from_user.id,
+                "<b>Введите своё значение в часах.</b>\n<blockquote>Пример: <code>5</code></blockquote>",
             )
-            return bot.answer_callback_query(call.id, "Ожидаю значение.")
+            await query.answer("Ожидаю значение.")
+            return
         if data == "nav:config":
             text = _build_config_text(owner_id, log_path, runtime_cache.path, help_cache.path)
-            bot.edit_message_text(
-                text,
-                call.message.chat.id,
-                call.message.message_id,
-                reply_markup=_build_config_keyboard(),
-            )
-            return bot.answer_callback_query(call.id)
-        return bot.answer_callback_query(call.id)
+            await _edit_message(query, text, _build_config_keyboard())
+            await query.answer()
+            return
+        await query.answer()
 
-    @bot.inline_handler(lambda query: True)
-    def inline_query_handler(inline_query):
-        if not _is_owner(inline_query.from_user.id):
-            bot.answer_inline_query(inline_query.id, results=[], cache_time=1)
+    @dp.inline_query()
+    async def inline_query_handler(inline_query: InlineQuery):
+        if not inline_query.from_user or not _is_owner(inline_query.from_user.id):
+            await inline_query.answer([], cache_time=1)
             return
         query = (inline_query.query or "").strip()
         cached = inline_cache.get(query)
         if cached and (time.time() - cached[0]) < INLINE_CACHE_TTL:
-            bot.answer_inline_query(inline_query.id, cached[1], cache_time=1)
+            await inline_query.answer(cached[1], cache_time=1)
             return
 
-        results = []
+        results: List[InlineQueryResultArticle] = []
         if query == "":
             text = _read_log_lines(log_path, 20)
             results.append(
@@ -521,7 +523,7 @@ def run_bot(config_path: str = DEFAULT_CONFIG_PATH) -> None:
                     id="status",
                     title="Статус юзербота",
                     input_message_content=InputTextMessageContent(
-                        message_text=text, parse_mode="HTML"
+                        message_text=text, parse_mode=ParseMode.HTML
                     ),
                     description="Проверить аптайм и обновление",
                     reply_markup=_build_inline_keyboard(),
@@ -535,7 +537,7 @@ def run_bot(config_path: str = DEFAULT_CONFIG_PATH) -> None:
                     id="help",
                     title="Помощь",
                     input_message_content=InputTextMessageContent(
-                        message_text=text, parse_mode="HTML"
+                        message_text=text, parse_mode=ParseMode.HTML
                     ),
                     description="Показать справку",
                     reply_markup=_build_inline_keyboard(),
@@ -572,10 +574,13 @@ def run_bot(config_path: str = DEFAULT_CONFIG_PATH) -> None:
             )
 
         inline_cache[query] = (time.time(), results)
-        bot.answer_inline_query(inline_query.id, results, cache_time=1)
+        await inline_query.answer(results, cache_time=1)
 
-    print("Inline bot is running.")
-    bot.infinity_polling()
+    await dp.start_polling(bot)
+
+
+def run_bot(config_path: str = DEFAULT_CONFIG_PATH) -> None:
+    asyncio.run(_run_bot(config_path))
 
 
 if __name__ == "__main__":
