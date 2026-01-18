@@ -1,10 +1,28 @@
 import os
+import time
 import zipfile
 import json
 from datetime import datetime
 from pyrogram.enums import ParseMode
 
 BACKUP_DIR = "backups"
+
+
+def _load_config(client):
+    config_path = f"config-{client.me.id}.json"
+    config = {"prefix": "."}
+    if os.path.exists(config_path):
+        try:
+            with open(config_path, "r", encoding="utf-8") as f:
+                config = json.load(f)
+        except Exception:
+            pass
+    return config, config_path
+
+
+def _save_config(path, config):
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(config, f, indent=4, ensure_ascii=True)
 
 def is_owner(client, user_id):
     """Проверяет является ли пользователь овнером"""
@@ -47,6 +65,40 @@ def get_files_to_backup():
     
     return files
 
+
+def create_backup_archive():
+    """Создает архив бекапа и возвращает путь + список файлов."""
+    ensure_backup_dir()
+    files = get_files_to_backup()
+    if not files:
+        raise ValueError("Нет файлов для бекапа")
+
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    backup_name = f"backup_{timestamp}.zip"
+    backup_path = os.path.join(BACKUP_DIR, backup_name)
+
+    with zipfile.ZipFile(backup_path, "w", zipfile.ZIP_DEFLATED) as zipf:
+        for file in files:
+            zipf.write(file)
+    return backup_path, files
+
+
+def build_backup_caption(backup_path, files, title="Бекап создан"):
+    size = os.path.getsize(backup_path)
+    size_mb = size / (1024 * 1024)
+    caption = (
+        f"<blockquote><emoji id=5776375003280838798>✅</emoji> <b>{title}!</b>\n\n"
+        f"<b>Размер:</b> <code>{size_mb:.2f} MB</code>\n"
+        f"<b>Файлов:</b> <code>{len(files)}</code>\n\n"
+        f"<b>Содержимое:</b>\n"
+    )
+    preview = "\n".join([f"• <code>{f}</code>" for f in sorted(files)[:10]]) or "—"
+    caption += preview
+    if len(files) > 10:
+        caption += f"\n... и ещё {len(files) - 10} файлов"
+    caption += "</blockquote>"
+    return caption
+
 async def backup_cmd(client, message, args):
     """Создает бекап всех данных"""
     # Проверка прав
@@ -56,59 +108,34 @@ async def backup_cmd(client, message, args):
             parse_mode=ParseMode.HTML
         )
     
-    ensure_backup_dir()
-    
     await message.edit(
         "<blockquote><emoji id=5891211339170326418>⌛️</emoji> <b>Создание бекапа...</b></blockquote>",
         parse_mode=ParseMode.HTML
     )
     
     try:
-        # Генерируем имя файла с датой и временем
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        backup_name = f"backup_{timestamp}.zip"
-        backup_path = os.path.join(BACKUP_DIR, backup_name)
-        
-        # Получаем файлы для бекапа
-        files = get_files_to_backup()
-        
-        if not files:
-            return await message.edit(
-                "<blockquote><emoji id=5778527486270770928>❌</emoji> <b>Нет файлов для бекапа</b></blockquote>",
-                parse_mode=ParseMode.HTML
-            )
-        
-        # Создаем zip архив
-        with zipfile.ZipFile(backup_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
-            for file in files:
-                zipf.write(file)
-        
-        # Получаем размер архива
-        size = os.path.getsize(backup_path)
-        size_mb = size / (1024 * 1024)
-        
-        # Отправляем бекап файлом
+        backup_path, files = create_backup_archive()
+        caption = build_backup_caption(backup_path, files)
+        config, _ = _load_config(client)
+        chat_id = config.get("log_group_id") or message.chat.id
+        thread_id = config.get("log_topic_backups_id")
+
         await message.delete()
-        
-        caption = (
-            f"<blockquote><emoji id=5776375003280838798>✅</emoji> <b>Бекап создан!</b>\n\n"
-            f"<b>Размер:</b> <code>{size_mb:.2f} MB</code>\n"
-            f"<b>Файлов:</b> <code>{len(files)}</code>\n\n"
-            f"<b>Содержимое:</b>\n" + 
-            "\n".join([f"• <code>{f}</code>" for f in sorted(files)[:10]])
-        )
-        
-        if len(files) > 10:
-            caption += f"\n... и ещё {len(files) - 10} файлов"
-        
-        caption += "</blockquote>"
-        
-        await client.send_document(
-            chat_id=message.chat.id,
-            document=backup_path,
-            caption=caption,
-            parse_mode=ParseMode.HTML
-        )
+        try:
+            await client.send_document(
+                chat_id=chat_id,
+                document=backup_path,
+                caption=caption,
+                parse_mode=ParseMode.HTML,
+                message_thread_id=thread_id,
+            )
+        except Exception:
+            await client.send_document(
+                chat_id=chat_id,
+                document=backup_path,
+                caption=caption,
+                parse_mode=ParseMode.HTML,
+            )
         
     except Exception as e:
         await message.edit(
@@ -273,9 +300,68 @@ async def delbackup_cmd(client, message, args):
             parse_mode=ParseMode.HTML
         )
 
+
+async def autobackup_cmd(client, message, args):
+    """Настройка автобекапов"""
+    config, path = _load_config(client)
+    if not args:
+        hours = config.get("auto_backup_hours")
+        next_ts = config.get("auto_backup_next_ts")
+        status = "Отключены"
+        if hours:
+            status = f"Каждые {hours}h"
+        next_info = "—"
+        if next_ts:
+            next_info = datetime.fromtimestamp(int(next_ts)).strftime("%d.%m.%Y %H:%M:%S")
+        return await message.edit(
+            f"<emoji id=5897962422169243693>👻</emoji> <b>Автобекапы</b>\n"
+            f"<blockquote><b>Статус:</b> <code>{status}</code>\n"
+            f"<b>Следующий:</b> <code>{next_info}</code></blockquote>\n\n"
+            f"<b>Команды:</b>\n"
+            f"<code>.autobackup &lt;hours&gt;</code> — включить\n"
+            f"<code>.autobackup off</code> — отключить",
+            parse_mode=ParseMode.HTML,
+        )
+
+    raw = args[0].lower()
+    if raw in {"off", "disable", "0", "нет", "no"}:
+        config["auto_backup_disabled"] = True
+        config.pop("auto_backup_hours", None)
+        config.pop("auto_backup_next_ts", None)
+        _save_config(path, config)
+        return await message.edit(
+            "<blockquote><emoji id=5776375003280838798>✅</emoji> <b>Автобекапы отключены</b></blockquote>",
+            parse_mode=ParseMode.HTML,
+        )
+
+    try:
+        hours = int(raw)
+    except ValueError:
+        return await message.edit(
+            "<blockquote><emoji id=5778527486270770928>❌</emoji> <b>Неверное значение</b></blockquote>",
+            parse_mode=ParseMode.HTML,
+        )
+
+    if hours <= 0:
+        return await message.edit(
+            "<blockquote><emoji id=5778527486270770928>❌</emoji> <b>Часы должны быть больше нуля</b></blockquote>",
+            parse_mode=ParseMode.HTML,
+        )
+
+    config["auto_backup_hours"] = hours
+    config["auto_backup_next_ts"] = int(time.time() + hours * 3600)
+    config.pop("auto_backup_disabled", None)
+    _save_config(path, config)
+    await message.edit(
+        f"<blockquote><emoji id=5776375003280838798>✅</emoji> <b>Автобекапы включены</b>\n"
+        f"<b>Интервал:</b> <code>{hours}h</code></blockquote>",
+        parse_mode=ParseMode.HTML,
+    )
+
 def register(app, commands, module_name):
     """Регистрация команд"""
     commands["backup"] = {"func": backup_cmd, "module": module_name}
     commands["restore"] = {"func": restore_cmd, "module": module_name}
     commands["backups"] = {"func": backups_cmd, "module": module_name}
     commands["delbackup"] = {"func": delbackup_cmd, "module": module_name}
+    commands["autobackup"] = {"func": autobackup_cmd, "module": module_name}

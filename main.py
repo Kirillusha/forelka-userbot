@@ -1,4 +1,5 @@
 import asyncio
+import html
 import os
 import json
 import sys
@@ -6,19 +7,32 @@ import subprocess
 import time
 import re
 import threading
+import requests
+from typing import Any, Dict, List, Optional, Tuple
 
 from pyrogram import Client
 from pyrogram import idle
 from pyrogram import filters
 from pyrogram import utils
+from pyrogram.enums import ParseMode
 from pyrogram.handlers import MessageHandler
 
 import loader
+from meta_lib import extract_command_descriptions, read_module_meta
+from modules import backup as backup_module
+import inline_setup
+
+LOG_FILE = "forelka.log"
+INLINE_CONFIG_PATH = "inline_bot.json"
+RUNTIME_PATH = "runtime.json"
+HELP_CACHE_PATH = "inline_help.json"
+DEFAULT_CONFIG = {"prefix": "."}
+HELP_PAGE_LIMIT = 3200
 
 class TerminalLogger:
     def __init__(self):
         self.terminal = sys.stdout
-        self.log = open("forelka.log", "a", encoding="utf-8")
+        self.log = open(LOG_FILE, "a", encoding="utf-8")
         self.ignore_list = [
             "PERSISTENT_TIMESTAMP_OUTDATED",
             "updates.GetChannelDifference",
@@ -50,6 +64,577 @@ class TerminalLogger:
             pass
 
 sys.stdout = sys.stderr = TerminalLogger()
+
+def _copy_default(value):
+    if isinstance(value, dict):
+        return dict(value)
+    if isinstance(value, list):
+        return list(value)
+    return value
+
+
+def _load_json(path: str, default):
+    if not os.path.exists(path):
+        return _copy_default(default)
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        return data if data is not None else _copy_default(default)
+    except Exception:
+        return _copy_default(default)
+
+
+def _save_json(path: str, data: Dict[str, Any]) -> None:
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(data, f, indent=4, ensure_ascii=True)
+
+
+def load_config(user_id: int) -> Tuple[Dict[str, Any], str]:
+    path = f"config-{user_id}.json"
+    config = _load_json(path, DEFAULT_CONFIG)
+    if "prefix" not in config:
+        config["prefix"] = "."
+    return config, path
+
+
+def save_config(path: str, config: Dict[str, Any]) -> None:
+    _save_json(path, config)
+
+
+def load_inline_config(path: str = INLINE_CONFIG_PATH) -> Dict[str, Any]:
+    return _load_json(path, {})
+
+
+def save_inline_config(path: str, config: Dict[str, Any]) -> None:
+    _save_json(path, config)
+
+
+def build_inline_config(token: str, owner_id: int, username: Optional[str] = None) -> Dict[str, Any]:
+    data = {
+        "token": token,
+        "owner_id": owner_id,
+        "log_file": LOG_FILE,
+        "runtime_file": RUNTIME_PATH,
+        "help_file": HELP_CACHE_PATH,
+        "created_at": int(time.time()),
+    }
+    if username:
+        data["username"] = username
+    return data
+
+
+def _escape(value: Optional[str]) -> str:
+    return html.escape(str(value)) if value is not None else ""
+
+
+def _first_line(text: Optional[str]) -> str:
+    if not text:
+        return ""
+    return str(text).strip().splitlines()[0].strip()
+
+
+def _command_descriptions(client, module_name: str, commands: List[str]) -> Dict[str, str]:
+    module = sys.modules.get(module_name)
+    raw_meta = getattr(module, "__meta__", None) if module else None
+    meta_descs = extract_command_descriptions(raw_meta)
+    result: Dict[str, str] = {}
+    for cmd in commands:
+        key = cmd.lower()
+        desc = ""
+        info = client.commands.get(cmd, {})
+        if isinstance(info, dict):
+            desc = info.get("description") or info.get("desc") or info.get("about") or info.get("help") or ""
+        desc = _first_line(desc)
+        if not desc:
+            desc = meta_descs.get(key, "")
+        if not desc:
+            func = client.commands.get(cmd, {}).get("func")
+            desc = _first_line(getattr(func, "__doc__", ""))
+        result[key] = desc
+    return result
+
+
+def build_inline_help_pages(client) -> List[str]:
+    config, _ = load_config(client.me.id)
+    pref = config.get("prefix", ".")
+
+    module_cmds: Dict[str, List[str]] = {}
+    for cmd_name, info in client.commands.items():
+        mod_name = info.get("module", "unknown")
+        module_cmds.setdefault(mod_name, []).append(cmd_name)
+    for cmds in module_cmds.values():
+        cmds.sort()
+
+    module_names = sorted(set(module_cmds.keys()) | set(getattr(client, "loaded_modules", set())))
+    blocks: List[str] = []
+
+    for module_name in module_names:
+        commands = module_cmds.get(module_name, [])
+        module = sys.modules.get(module_name)
+        meta = read_module_meta(module, module_name, commands)
+        display = meta.get("name") or module_name
+        description = _first_line(meta.get("description")) or "No description"
+        cmd_descs = _command_descriptions(client, module_name, commands) if commands else {}
+
+        if commands:
+            cmd_lines = []
+            for cmd in commands:
+                desc = cmd_descs.get(cmd.lower()) or "no description"
+                cmd_lines.append(f"{pref}{cmd} — {desc}")
+            cmds_block = "\n".join(cmd_lines)
+        else:
+            cmds_block = "No commands"
+
+        block = (
+            f"<blockquote><b>{_escape(display)}</b>\n"
+            f"{_escape(description)}\n\n"
+            f"<code>{_escape(cmds_block)}</code></blockquote>"
+        )
+        blocks.append(block)
+
+    if not blocks:
+        return ["<blockquote>No modules loaded.</blockquote>"]
+
+    pages: List[str] = []
+    current = ""
+    for block in blocks:
+        candidate = f"{current}\n\n{block}" if current else block
+        if len(candidate) > HELP_PAGE_LIMIT and current:
+            pages.append(current.strip())
+            current = block
+        else:
+            current = candidate
+    if current:
+        pages.append(current.strip())
+    return pages
+
+
+def write_help_cache(path: str, pages: List[str], prefix: str) -> None:
+    payload = {
+        "generated_at": int(time.time()),
+        "prefix": prefix,
+        "pages": pages,
+    }
+    _save_json(path, payload)
+
+
+async def help_cache_loop(client, path: str, interval: int = 120) -> None:
+    while True:
+        try:
+            config, _ = load_config(client.me.id)
+            pages = build_inline_help_pages(client)
+            write_help_cache(path, pages, config.get("prefix", "."))
+        except Exception:
+            pass
+        await asyncio.sleep(interval)
+
+
+def format_uptime(seconds: int) -> str:
+    minutes, secs = divmod(max(seconds, 0), 60)
+    hours, minutes = divmod(minutes, 60)
+    days, hours = divmod(hours, 24)
+    parts: List[str] = []
+    if days:
+        parts.append(f"{days}d")
+    if hours:
+        parts.append(f"{hours}h")
+    if minutes:
+        parts.append(f"{minutes}m")
+    parts.append(f"{secs}s")
+    return " ".join(parts)
+
+
+def get_git_commit() -> str:
+    try:
+        return subprocess.check_output(["git", "rev-parse", "--short", "HEAD"]).decode().strip()
+    except Exception:
+        return "unknown"
+
+
+def get_git_branch() -> str:
+    try:
+        return subprocess.check_output(["git", "rev-parse", "--abbrev-ref", "HEAD"]).decode().strip()
+    except Exception:
+        return "unknown"
+
+
+def get_update_status(branch: str) -> str:
+    if not branch or branch == "unknown":
+        return "Неизвестно"
+    try:
+        subprocess.run(
+            ["git", "fetch", "origin", branch],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            timeout=10,
+            check=False,
+        )
+        result = subprocess.check_output(
+            ["git", "rev-list", "--left-right", "--count", f"HEAD...origin/{branch}"],
+            stderr=subprocess.DEVNULL,
+        ).decode().strip()
+        ahead, behind = (int(x) for x in result.split())
+        if behind > 0:
+            return "Нужно обновить"
+        if ahead > 0:
+            return "Локально новее"
+        return "Актуальная версия"
+    except Exception:
+        return "Неизвестно"
+
+
+def start_inline_bot_thread(config_path: str):
+    try:
+        import inline_bot as inline_bot_module
+    except Exception as e:
+        print(f"[inline] failed to import inline bot: {e}")
+        return None
+    thread = threading.Thread(
+        target=inline_bot_module.run_bot, args=(config_path,), daemon=True
+    )
+    thread.start()
+    return thread
+
+
+async def ensure_inline_bot(client) -> Optional[Dict[str, Any]]:
+    inline_cfg = load_inline_config()
+    if inline_cfg.get("token"):
+        inline_cfg.setdefault("owner_id", client.me.id)
+        inline_cfg.setdefault("log_file", LOG_FILE)
+        inline_cfg.setdefault("runtime_file", RUNTIME_PATH)
+        inline_cfg.setdefault("help_file", HELP_CACHE_PATH)
+        save_inline_config(INLINE_CONFIG_PATH, inline_cfg)
+        return inline_cfg
+
+    print("Inline bot is not configured.")
+    print("Choose inline setup:")
+    print("  1) Auto-create via BotFather")
+    print("  2) Manual token")
+    print("  3) Skip")
+    choice = (input("> ").strip() or "2").lower()
+
+    if choice in ("1", "auto", "a"):
+        try:
+            print("Creating inline bot via BotFather...")
+            token, username = await inline_setup.create_inline_bot(client)
+            inline_cfg = build_inline_config(token, client.me.id, username=username)
+            save_inline_config(INLINE_CONFIG_PATH, inline_cfg)
+            print("Inline bot successfully configured.")
+            return inline_cfg
+        except Exception as e:
+            print(f"Inline bot auto-setup failed: {e}")
+            return None
+    if choice in ("2", "manual", "m"):
+        token = input("Inline bot token: ").strip()
+        if token:
+            inline_cfg = build_inline_config(token, client.me.id)
+            save_inline_config(INLINE_CONFIG_PATH, inline_cfg)
+            print("Inline bot successfully configured.")
+            return inline_cfg
+        print("Inline bot token is empty. Skipped.")
+        return None
+
+    print("Inline bot setup skipped.")
+    return None
+
+
+async def ensure_log_group(client, config: Dict[str, Any], config_path: str) -> Dict[str, Any]:
+    changed = False
+    group_id = config.get("log_group_id")
+
+    if group_id:
+        try:
+            await client.get_chat(group_id)
+        except Exception:
+            group_id = None
+
+    if not group_id:
+        try:
+            try:
+                chat = await client.create_supergroup(
+                    "Forelka Logs",
+                    "Logs and backups",
+                    is_forum=True,
+                )
+            except TypeError:
+                chat = await client.create_supergroup("Forelka Logs", "Logs and backups")
+                try:
+                    await client.toggle_forum(chat.id, True)
+                except Exception:
+                    pass
+            group_id = chat.id
+            config["log_group_id"] = group_id
+            changed = True
+        except Exception as e:
+            print(f"[logs] Failed to create log group: {e}")
+            return config
+
+    async def _ensure_topic(key: str, title: str) -> None:
+        nonlocal changed
+        if config.get(key):
+            return
+        try:
+            topic = await client.create_forum_topic(group_id, title)
+            topic_id = getattr(topic, "message_thread_id", None) or getattr(topic, "id", None)
+            if topic_id:
+                config[key] = topic_id
+                changed = True
+        except Exception:
+            pass
+
+    if group_id:
+        await _ensure_topic("log_topic_backups_id", "Бекапы")
+        await _ensure_topic("log_topic_logs_id", "Логи")
+
+    if changed:
+        save_config(config_path, config)
+    return config
+
+
+async def send_log_message(client, config: Dict[str, Any], text: str, topic: str = "logs") -> None:
+    chat_id = config.get("log_group_id") or "me"
+    thread_id = None
+    if topic == "logs":
+        thread_id = config.get("log_topic_logs_id")
+    elif topic == "backups":
+        thread_id = config.get("log_topic_backups_id")
+    try:
+        await client.send_message(
+            chat_id,
+            text,
+            parse_mode=ParseMode.HTML,
+            message_thread_id=thread_id,
+        )
+    except Exception:
+        await client.send_message(chat_id, text, parse_mode=ParseMode.HTML)
+
+
+def _is_alert_line(line: str) -> bool:
+    lowered = line.lower()
+    triggers = (
+        "error",
+        "warning",
+        "exception",
+        "traceback",
+        "critical",
+        "fatal",
+    )
+    return any(word in lowered for word in triggers)
+
+
+async def monitor_log_alerts(client, config: Dict[str, Any]) -> None:
+    if not config.get("log_group_id"):
+        return
+    buffer: List[str] = []
+    last_send = time.time()
+
+    while True:
+        if not os.path.exists(LOG_FILE):
+            await asyncio.sleep(2)
+            continue
+        try:
+            with open(LOG_FILE, "r", encoding="utf-8") as f:
+                f.seek(0, os.SEEK_END)
+                while True:
+                    line = f.readline()
+                    if not line:
+                        if buffer and (time.time() - last_send) > 4:
+                            payload = "\n".join(buffer[-10:])
+                            text = (
+                                "<b>Forelka Alert</b>\n"
+                                f"<blockquote expandable><code>{_escape(payload)}</code></blockquote>"
+                            )
+                            await send_log_message(client, config, text, topic="logs")
+                            buffer.clear()
+                            last_send = time.time()
+                        await asyncio.sleep(1)
+                        continue
+                    if _is_alert_line(line):
+                        buffer.append(line.strip())
+                        if len(buffer) >= 6:
+                            payload = "\n".join(buffer[-10:])
+                            text = (
+                                "<b>Forelka Alert</b>\n"
+                                f"<blockquote expandable><code>{_escape(payload)}</code></blockquote>"
+                            )
+                            await send_log_message(client, config, text, topic="logs")
+                            buffer.clear()
+                            last_send = time.time()
+        except Exception:
+            await asyncio.sleep(2)
+
+
+async def runtime_heartbeat_loop(client, runtime_path: str, payload: Dict[str, Any]) -> None:
+    while True:
+        payload["last_heartbeat"] = int(time.time())
+        _save_json(runtime_path, payload)
+        await asyncio.sleep(15)
+
+
+async def maybe_prompt_auto_backup(client, config: Dict[str, Any], config_path: str) -> None:
+    if config.get("auto_backup_hours") or config.get("auto_backup_disabled"):
+        return
+    if config.get("auto_backup_prompted"):
+        return
+
+    text = (
+        "<b>Автобекапы</b>\n"
+        "<blockquote>У нас присутствует система автоматических бекапов данных.</blockquote>\n"
+        "<blockquote>Выберите через сколько часов делать автобекап.</blockquote>\n\n"
+        "<b>Примеры:</b> <code>1</code>, <code>2</code>, <code>3</code>, <code>4</code>, <code>6</code>, <code>12</code>\n"
+        "<blockquote>Ответьте числом на это сообщение или используйте команду "
+        "<code>.autobackup &lt;hours&gt;</code>.</blockquote>"
+    )
+    inline_cfg = load_inline_config()
+    if inline_cfg.get("token") and inline_cfg.get("owner_id"):
+        try:
+            keyboard = {
+                "inline_keyboard": [
+                    [
+                        {"text": "1h", "callback_data": "autobackup:set:1"},
+                        {"text": "2h", "callback_data": "autobackup:set:2"},
+                        {"text": "3h", "callback_data": "autobackup:set:3"},
+                    ],
+                    [
+                        {"text": "4h", "callback_data": "autobackup:set:4"},
+                        {"text": "6h", "callback_data": "autobackup:set:6"},
+                        {"text": "12h", "callback_data": "autobackup:set:12"},
+                    ],
+                    [
+                        {"text": "Свое значение", "callback_data": "autobackup:custom"},
+                        {"text": "Отключить", "callback_data": "autobackup:off"},
+                    ],
+                ]
+            }
+            payload = {
+                "chat_id": inline_cfg["owner_id"],
+                "text": text,
+                "parse_mode": "HTML",
+                "reply_markup": keyboard,
+            }
+            resp = requests.post(
+                f"https://api.telegram.org/bot{inline_cfg['token']}/sendMessage",
+                json=payload,
+                timeout=10,
+            )
+            data = resp.json() if resp.ok else {}
+            if data.get("ok"):
+                msg_id = data.get("result", {}).get("message_id")
+                config["auto_backup_prompted"] = True
+                if msg_id:
+                    config["auto_backup_prompt_msg_id"] = msg_id
+                save_config(config_path, config)
+                return
+        except Exception:
+            pass
+
+    try:
+        msg = await client.send_message("me", text, parse_mode=ParseMode.HTML)
+        config["auto_backup_prompted"] = True
+        config["auto_backup_prompt_msg_id"] = msg.id
+        save_config(config_path, config)
+    except Exception:
+        pass
+
+
+async def auto_backup_reply_handler(client, message) -> None:
+    if not message.text or not message.reply_to_message:
+        return
+    if message.chat.id != client.me.id:
+        return
+    config, config_path = load_config(client.me.id)
+    prompt_id = config.get("auto_backup_prompt_msg_id")
+    if not prompt_id or message.reply_to_message.id != prompt_id:
+        return
+
+    raw = message.text.strip().lower()
+    if raw in {"off", "нет", "no", "0", "disable"}:
+        config["auto_backup_disabled"] = True
+        config.pop("auto_backup_hours", None)
+        config.pop("auto_backup_next_ts", None)
+        config.pop("auto_backup_prompt_msg_id", None)
+        save_config(config_path, config)
+        await client.send_message("me", "<b>Автобекапы отключены.</b>", parse_mode=ParseMode.HTML)
+        return
+
+    try:
+        hours = int(raw)
+    except ValueError:
+        await client.send_message(
+            "me",
+            "<b>Неверное значение.</b>\n<blockquote>Введите число часов, например <code>2</code>.</blockquote>",
+            parse_mode=ParseMode.HTML,
+        )
+        return
+
+    if hours <= 0:
+        await client.send_message(
+            "me",
+            "<b>Неверное значение.</b>\n<blockquote>Часы должны быть больше нуля.</blockquote>",
+            parse_mode=ParseMode.HTML,
+        )
+        return
+
+    config["auto_backup_hours"] = hours
+    config["auto_backup_next_ts"] = int(time.time() + hours * 3600)
+    config.pop("auto_backup_prompt_msg_id", None)
+    config.pop("auto_backup_disabled", None)
+    save_config(config_path, config)
+    await client.send_message(
+        "me",
+        f"<b>Автобекапы включены.</b>\n<blockquote>Интервал: <code>{hours}h</code></blockquote>",
+        parse_mode=ParseMode.HTML,
+    )
+
+
+async def run_auto_backup(client, config: Dict[str, Any], config_path: str) -> None:
+    try:
+        backup_path, files = backup_module.create_backup_archive()
+    except Exception as e:
+        await send_log_message(
+            client,
+            config,
+            f"<b>Auto backup failed:</b> <code>{_escape(str(e))}</code>",
+            topic="logs",
+        )
+        return
+
+    caption = backup_module.build_backup_caption(backup_path, files, title="Auto backup")
+    chat_id = config.get("log_group_id") or "me"
+    thread_id = config.get("log_topic_backups_id")
+    try:
+        await client.send_document(
+            chat_id,
+            document=backup_path,
+            caption=caption,
+            parse_mode=ParseMode.HTML,
+            message_thread_id=thread_id,
+        )
+    except Exception:
+        await client.send_document(
+            chat_id,
+            document=backup_path,
+            caption=caption,
+            parse_mode=ParseMode.HTML,
+        )
+
+
+async def auto_backup_loop(client, config_path: str) -> None:
+    while True:
+        config, _ = load_config(client.me.id)
+        hours = config.get("auto_backup_hours")
+        try:
+            hours_int = int(hours) if hours else 0
+        except Exception:
+            hours_int = 0
+        if hours_int:
+            next_ts = config.get("auto_backup_next_ts")
+            now = time.time()
+            if not next_ts or now >= next_ts:
+                await run_auto_backup(client, config, config_path)
+                config["auto_backup_next_ts"] = int(now + hours_int * 3600)
+                save_config(config_path, config)
+        await asyncio.sleep(60)
 
 def load_saved_api_for_session(session_filename: str):
     """
@@ -337,16 +922,51 @@ async def main():
     # Обработчик для отредактированных сообщений
     from pyrogram.handlers import EditedMessageHandler
     client.add_handler(EditedMessageHandler(edited_handler, filters.me & filters.text))
+    # Обработчик ответов на настройку автобекапов
+    client.add_handler(MessageHandler(auto_backup_reply_handler, filters.me & filters.text))
 
     await client.start()
     client.start_time = time.time()
     loader.load_all(client)
 
-    git = "unknown"
-    try: 
-        git = subprocess.check_output(["git", "rev-parse", "--short", "HEAD"]).decode().strip()
-    except: 
-        pass
+    config, config_path = load_config(client.me.id)
+    client.prefix = config.get("prefix", ".")
+
+    config = await ensure_log_group(client, config, config_path)
+
+    branch = get_git_branch()
+    git_commit = get_git_commit()
+    update_status = get_update_status(branch)
+
+    runtime_payload = {
+        "start_time": int(client.start_time),
+        "last_heartbeat": int(time.time()),
+        "git_commit": git_commit,
+        "git_branch": branch,
+        "update_status": update_status,
+    }
+    _save_json(RUNTIME_PATH, runtime_payload)
+    asyncio.create_task(runtime_heartbeat_loop(client, RUNTIME_PATH, runtime_payload))
+
+    pages = build_inline_help_pages(client)
+    write_help_cache(HELP_CACHE_PATH, pages, config.get("prefix", "."))
+    asyncio.create_task(help_cache_loop(client, HELP_CACHE_PATH))
+
+    inline_cfg = await ensure_inline_bot(client)
+    if inline_cfg:
+        client.inline_bot_thread = start_inline_bot_thread(INLINE_CONFIG_PATH)
+
+    await maybe_prompt_auto_backup(client, config, config_path)
+    asyncio.create_task(auto_backup_loop(client, config_path))
+    asyncio.create_task(monitor_log_alerts(client, config))
+
+    startup_text = (
+        "<b>Forelka Userbot started!</b>\n\n"
+        f"<blockquote><b>Commit:</b> <code>{_escape(git_commit)}</code></blockquote>\n"
+        f"<blockquote><b>Update status:</b> <code>{_escape(update_status)}</code></blockquote>\n"
+        f"<blockquote expandable><b>Uptime:</b> <code>{format_uptime(0)}</code></blockquote>"
+    )
+    await send_log_message(client, config, startup_text, topic="logs")
 
     print(fr"""
   __               _ _         
@@ -356,7 +976,7 @@ async def main():
 | || (_) | | |  __/ |   < (_| |
 |_| \___/|_|  \___|_|_|\_\__,_|
 
-Forelka Started | Git: #{git}
+Forelka Started | Git: #{git_commit}
 """)
 
     await idle()

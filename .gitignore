@@ -177,6 +177,9 @@ cython_debug/
 *.session
 telegram_api-*.json
 config-*.json
+inline_bot.json
+inline_help.json
+runtime.json
 forelka.db
 forelka.log
 backups/
