@@ -16,17 +16,47 @@ def _generate_username(prefix: str = "forelka_inline") -> str:
     return base[:32]
 
 
+async def _fetch_latest_message(client, chat_id: str):
+    if hasattr(client, "get_chat_history"):
+        try:
+            history = await client.get_chat_history(chat_id, limit=1)
+            if isinstance(history, list):
+                return history[0] if history else None
+            async for msg in history:
+                return msg
+            return None
+        except TypeError:
+            history = client.get_chat_history(chat_id, limit=1)
+            async for msg in history:
+                return msg
+            return None
+    if hasattr(client, "get_history"):
+        try:
+            history = await client.get_history(chat_id, limit=1)
+            return history[0] if history else None
+        except TypeError:
+            history = client.get_history(chat_id, limit=1)
+            async for msg in history:
+                return msg
+            return None
+    if hasattr(client, "iter_history"):
+        history = client.iter_history(chat_id, limit=1)
+        async for msg in history:
+            return msg
+    return None
+
+
 async def _get_last_message_id(client, chat_id: str) -> int:
-    history = await client.get_history(chat_id, limit=1)
-    return history[0].id if history else 0
+    message = await _fetch_latest_message(client, chat_id)
+    return message.id if message else 0
 
 
 async def _wait_new_message(client, chat_id: str, last_id: int, timeout: int = 90):
     start = time.time()
     while time.time() - start < timeout:
-        history = await client.get_history(chat_id, limit=1)
-        if history and history[0].id != last_id:
-            return history[0]
+        message = await _fetch_latest_message(client, chat_id)
+        if message and message.id != last_id:
+            return message
         await asyncio.sleep(1)
     raise TimeoutError("BotFather did not respond in time")
 
