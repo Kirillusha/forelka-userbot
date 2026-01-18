@@ -5,6 +5,7 @@ import time
 from typing import Any, Dict, List, Optional, Set
 
 from aiogram import Bot, Dispatcher
+from aiogram.client.bot import DefaultBotProperties
 from aiogram.enums import ParseMode
 from aiogram.filters import Command
 from aiogram.types import (
@@ -238,7 +239,7 @@ async def _run_bot(config_path: str) -> None:
     user_config_path = f"config-{owner_id}.json"
     pending_custom: Set[int] = set()
 
-    bot = Bot(cfg["token"], parse_mode=ParseMode.HTML)
+    bot = Bot(cfg["token"], default=DefaultBotProperties(parse_mode=ParseMode.HTML))
     dp = Dispatcher()
 
     def _is_owner(user_id: int) -> bool:
@@ -273,6 +274,8 @@ async def _run_bot(config_path: str) -> None:
             await query.message.edit_text(text, reply_markup=markup)
         else:
             await bot.send_message(query.from_user.id, text, reply_markup=markup)
+
+    help_inline_query = cfg.get("help_inline_query", "__forelka_help__")
 
     @dp.message(Command("start"))
     async def handle_start(message: Message):
@@ -328,6 +331,30 @@ async def _run_bot(config_path: str) -> None:
             return
         text = _build_config_text(owner_id, log_path, runtime_cache.path, help_cache.path)
         await message.answer(text, reply_markup=_build_config_keyboard())
+
+    @dp.inline_query()
+    async def inline_query_handler(inline_query):
+        if not inline_query.from_user or not _is_owner(inline_query.from_user.id):
+            return await inline_query.answer([], cache_time=1)
+        query = (inline_query.query or "").strip()
+        if query != help_inline_query:
+            return await inline_query.answer([], cache_time=1)
+        pages = _get_help_pages()
+        text = _build_help_text(pages, 0)
+        results = [
+            {
+                "type": "article",
+                "id": "help_page_0",
+                "title": "Help",
+                "input_message_content": {
+                    "message_text": text,
+                    "parse_mode": "HTML",
+                },
+                "reply_markup": _build_help_keyboard(0, len(pages)).model_dump(),
+                "description": "Help pages",
+            }
+        ]
+        await inline_query.answer(results, cache_time=1)
 
     @dp.message()
     async def handle_custom_hours(message: Message):

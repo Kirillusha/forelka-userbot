@@ -115,6 +115,7 @@ def build_inline_config(token: str, owner_id: int, username: Optional[str] = Non
         "log_file": LOG_FILE,
         "runtime_file": RUNTIME_PATH,
         "help_file": HELP_CACHE_PATH,
+        "help_inline_query": "__forelka_help__",
         "created_at": int(time.time()),
     }
     if username:
@@ -302,6 +303,7 @@ async def ensure_inline_bot(client) -> Optional[Dict[str, Any]]:
         inline_cfg.setdefault("log_file", LOG_FILE)
         inline_cfg.setdefault("runtime_file", RUNTIME_PATH)
         inline_cfg.setdefault("help_file", HELP_CACHE_PATH)
+        inline_cfg.setdefault("help_inline_query", "__forelka_help__")
         save_inline_config(INLINE_CONFIG_PATH, inline_cfg)
         bot_api.ensure_inline_identity()
         return inline_cfg
@@ -406,8 +408,21 @@ async def ensure_log_group(client, config: Dict[str, Any], config_path: str) -> 
     if group_id:
         forum_ok = await _ensure_forum_enabled()
         if not forum_ok:
-            print("[logs] Failed to enable forum topics on log group.")
-            return config
+            print("[logs] Failed to enable forum topics on log group. Recreating group.")
+            try:
+                chat = await client.create_supergroup(
+                    "Forelka Logs",
+                    "Logs and backups",
+                    is_forum=True,
+                )
+                group_id = chat.id
+                config["log_group_id"] = group_id
+                config.pop("log_topic_backups_id", None)
+                config.pop("log_topic_logs_id", None)
+                changed = True
+            except Exception as e:
+                print(f"[logs] Failed to recreate log group: {e}")
+                return config
 
     async def _ensure_topic(key: str, title: str) -> None:
         nonlocal changed

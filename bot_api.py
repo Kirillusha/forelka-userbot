@@ -1,11 +1,13 @@
 import asyncio
 import json
 import os
+import re
 from typing import Any, Dict, Optional
 
 import requests
 
 INLINE_CONFIG_PATH = os.environ.get("FORELKA_INLINE_CONFIG", "inline_bot.json")
+_EMOJI_TAG_RE = re.compile(r"</?emoji[^>]*>")
 
 
 def _load_json(path: str, default):
@@ -44,6 +46,14 @@ def _bot_api_request(token: str, method: str, payload: Dict[str, Any], files=Non
         return {"ok": False, "error_code": resp.status_code, "description": "Invalid JSON"}
 
 
+def sanitize_html(text: Optional[str]) -> Optional[str]:
+    if not text:
+        return text
+    clean = _EMOJI_TAG_RE.sub("", text)
+    clean = clean.replace("<blockquote expandable>", "<blockquote>")
+    return clean
+
+
 def ensure_inline_identity() -> Optional[Dict[str, Any]]:
     cfg = load_inline_config()
     token = cfg.get("token")
@@ -69,7 +79,7 @@ async def send_bot_message(
     thread_id: Optional[int] = None,
     reply_markup: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
-    payload = {"chat_id": chat_id, "text": text, "parse_mode": parse_mode}
+    payload = {"chat_id": chat_id, "text": sanitize_html(text), "parse_mode": parse_mode}
     if thread_id:
         payload["message_thread_id"] = thread_id
     if reply_markup:
@@ -87,7 +97,7 @@ def _send_document_sync(
 ) -> Dict[str, Any]:
     payload: Dict[str, Any] = {"chat_id": chat_id}
     if caption:
-        payload["caption"] = caption
+        payload["caption"] = sanitize_html(caption)
         payload["parse_mode"] = parse_mode
     if thread_id:
         payload["message_thread_id"] = thread_id

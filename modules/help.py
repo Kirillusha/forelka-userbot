@@ -191,30 +191,31 @@ async def help_cmd(client, message, args):
         return await message.edit(detail, parse_mode=ParseMode.HTML)
 
     inline_cfg = bot_api.ensure_inline_identity() or bot_api.load_inline_config()
-    token = inline_cfg.get("token")
-    owner_id = inline_cfg.get("owner_id")
     username = inline_cfg.get("username")
     bot_id = inline_cfg.get("id")
-    if token and owner_id and username:
-        pages = _load_help_pages()
-        text = _build_help_text(pages, 0)
-        markup = _build_help_keyboard(0, len(pages))
+    help_query = inline_cfg.get("help_inline_query", "__forelka_help__")
+    if username:
         thread_id = getattr(message, "message_thread_id", None)
         allowed = await _ensure_inline_bot_in_chat(client, message.chat.id, username, bot_id)
         if allowed:
-            data = await bot_api.send_bot_message(
-                token,
-                message.chat.id,
-                text,
-                reply_markup=markup,
-                thread_id=thread_id,
-            )
-            if data.get("ok"):
-                try:
-                    await message.delete()
-                except Exception:
-                    pass
-                return
+            try:
+                results = await client.get_inline_bot_results(
+                    username, query=help_query, offset=""
+                )
+                if results and results.results:
+                    await client.send_inline_bot_result(
+                        chat_id=message.chat.id,
+                        query_id=results.query_id,
+                        result_id=results.results[0].id,
+                        message_thread_id=thread_id,
+                    )
+                    try:
+                        await message.delete()
+                    except Exception:
+                        pass
+                    return
+            except Exception:
+                pass
         await message.edit(
             "<blockquote><emoji id=5778527486270770928>❌</emoji> "
             "<b>Inline бот не может отправить help. Добавьте бота в чат.</b></blockquote>",
