@@ -7,17 +7,16 @@ import subprocess
 import time
 import re
 import threading
-import requests
 from typing import Any, Dict, List, Optional, Tuple
 
 from pyrogram import Client
 from pyrogram import idle
 from pyrogram import filters
 from pyrogram import utils
-from pyrogram.enums import ParseMode
 from pyrogram.handlers import MessageHandler
 
 import loader
+import bot_api
 from meta_lib import extract_command_descriptions, read_module_meta
 from modules import backup as backup_module
 import inline_setup
@@ -102,11 +101,11 @@ def save_config(path: str, config: Dict[str, Any]) -> None:
 
 
 def load_inline_config(path: str = INLINE_CONFIG_PATH) -> Dict[str, Any]:
-    return _load_json(path, {})
+    return bot_api.load_inline_config(path)
 
 
 def save_inline_config(path: str, config: Dict[str, Any]) -> None:
-    _save_json(path, config)
+    bot_api.save_inline_config(path, config)
 
 
 def build_inline_config(token: str, owner_id: int, username: Optional[str] = None) -> Dict[str, Any]:
@@ -304,6 +303,7 @@ async def ensure_inline_bot(client) -> Optional[Dict[str, Any]]:
         inline_cfg.setdefault("runtime_file", RUNTIME_PATH)
         inline_cfg.setdefault("help_file", HELP_CACHE_PATH)
         save_inline_config(INLINE_CONFIG_PATH, inline_cfg)
+        bot_api.ensure_inline_identity()
         return inline_cfg
 
     print("Inline bot is not configured.")
@@ -319,6 +319,7 @@ async def ensure_inline_bot(client) -> Optional[Dict[str, Any]]:
             token, username = await inline_setup.create_inline_bot(client)
             inline_cfg = build_inline_config(token, client.me.id, username=username)
             save_inline_config(INLINE_CONFIG_PATH, inline_cfg)
+            bot_api.ensure_inline_identity()
             print("Inline bot successfully configured.")
             return inline_cfg
         except Exception as e:
@@ -329,6 +330,7 @@ async def ensure_inline_bot(client) -> Optional[Dict[str, Any]]:
         if token:
             inline_cfg = build_inline_config(token, client.me.id)
             save_inline_config(INLINE_CONFIG_PATH, inline_cfg)
+            bot_api.ensure_inline_identity()
             print("Inline bot successfully configured.")
             return inline_cfg
         print("Inline bot token is empty. Skipped.")
@@ -369,6 +371,44 @@ async def ensure_log_group(client, config: Dict[str, Any], config_path: str) -> 
             print(f"[logs] Failed to create log group: {e}")
             return config
 
+    expected_titles = {"backups": "Backups", "logs": "Logs"}
+    if config.get("log_topic_titles") != expected_titles:
+        config["log_topic_titles"] = expected_titles
+        config.pop("log_topic_backups_id", None)
+        config.pop("log_topic_logs_id", None)
+        changed = True
+
+    async def _ensure_forum_enabled() -> bool:
+        try:
+            chat = await client.get_chat(group_id)
+            if getattr(chat, "is_forum", False):
+                return True
+        except Exception:
+            pass
+        if hasattr(client, "toggle_forum"):
+            try:
+                await client.toggle_forum(group_id, True)
+            except Exception:
+                pass
+        else:
+            try:
+                from pyrogram.raw.functions.channels import ToggleForum
+                peer = await client.resolve_peer(group_id)
+                await client.invoke(ToggleForum(channel=peer, enabled=True))
+            except Exception:
+                pass
+        try:
+            chat = await client.get_chat(group_id)
+            return bool(getattr(chat, "is_forum", False))
+        except Exception:
+            return False
+
+    if group_id:
+        forum_ok = await _ensure_forum_enabled()
+        if not forum_ok:
+            print("[logs] Failed to enable forum topics on log group.")
+            return config
+
     async def _ensure_topic(key: str, title: str) -> None:
         nonlocal changed
         if config.get(key):
@@ -383,30 +423,51 @@ async def ensure_log_group(client, config: Dict[str, Any], config_path: str) -> 
             pass
 
     if group_id:
-        await _ensure_topic("log_topic_backups_id", "Бекапы")
-        await _ensure_topic("log_topic_logs_id", "Логи")
+        await _ensure_topic("log_topic_backups_id", expected_titles["backups"])
+        await _ensure_topic("log_topic_logs_id", expected_titles["logs"])
 
     if changed:
         save_config(config_path, config)
     return config
 
 
+async def ensure_inline_bot_member(client, config: Dict[str, Any]) -> None:
+    inline_cfg = bot_api.ensure_inline_identity() or load_inline_config()
+    token = inline_cfg.get("token")
+    username = inline_cfg.get("username")
+    bot_id = inline_cfg.get("id")
+    group_id = config.get("log_group_id")
+    if not token or not username or not group_id:
+        return
+    try:
+        if bot_id:
+            await client.get_chat_member(group_id, bot_id)
+            return
+    except Exception:
+        pass
+    try:
+        await client.add_chat_members(group_id, f"@{username}")
+    except Exception as e:
+        print(f"[inline] Failed to add inline bot to log group: {e}")
+
 async def send_log_message(client, config: Dict[str, Any], text: str, topic: str = "logs") -> None:
-    chat_id = config.get("log_group_id") or "me"
+    inline_cfg = bot_api.ensure_inline_identity() or load_inline_config()
+    token = inline_cfg.get("token")
+    if not token:
+        print("[logs] Inline bot token missing, log skipped.")
+        return
+    chat_id = config.get("log_group_id")
+    if not chat_id:
+        print("[logs] Log group missing, log skipped.")
+        return
     thread_id = None
     if topic == "logs":
         thread_id = config.get("log_topic_logs_id")
     elif topic == "backups":
         thread_id = config.get("log_topic_backups_id")
-    try:
-        await client.send_message(
-            chat_id,
-            text,
-            parse_mode=ParseMode.HTML,
-            message_thread_id=thread_id,
-        )
-    except Exception:
-        await client.send_message(chat_id, text, parse_mode=ParseMode.HTML)
+    data = await bot_api.send_bot_message(token, chat_id, text, thread_id=thread_id)
+    if not data.get("ok"):
+        print(f"[logs] Inline bot send failed: {data}")
 
 
 def _is_alert_line(line: str) -> bool:
@@ -485,7 +546,7 @@ async def maybe_prompt_auto_backup(client, config: Dict[str, Any], config_path: 
         "<blockquote>Ответьте числом на это сообщение или используйте команду "
         "<code>.autobackup &lt;hours&gt;</code>.</blockquote>"
     )
-    inline_cfg = load_inline_config()
+    inline_cfg = bot_api.ensure_inline_identity() or load_inline_config()
     if not inline_cfg.get("token") or not inline_cfg.get("owner_id"):
         print("[autobackup] Inline bot not configured. Prompt skipped.")
         return
@@ -508,23 +569,19 @@ async def maybe_prompt_auto_backup(client, config: Dict[str, Any], config_path: 
                 ],
             ]
         }
-        payload = {
-            "chat_id": inline_cfg["owner_id"],
-            "text": text,
-            "parse_mode": "HTML",
-            "reply_markup": keyboard,
-        }
-        resp = requests.post(
-            f"https://api.telegram.org/bot{inline_cfg['token']}/sendMessage",
-            json=payload,
-            timeout=10,
+        data = await bot_api.send_bot_message(
+            inline_cfg["token"],
+            inline_cfg["owner_id"],
+            text,
+            reply_markup=keyboard,
         )
-        data = resp.json() if resp.ok else {}
         if data.get("ok"):
             msg_id = data.get("result", {}).get("message_id")
             config["auto_backup_prompted"] = True
             if msg_id:
                 config["auto_backup_prompt_msg_id"] = msg_id
+            if inline_cfg.get("id"):
+                config["auto_backup_prompt_bot_id"] = inline_cfg["id"]
             save_config(config_path, config)
             return
         print(f"[autobackup] Inline bot prompt failed: {data}")
@@ -535,39 +592,47 @@ async def maybe_prompt_auto_backup(client, config: Dict[str, Any], config_path: 
 async def auto_backup_reply_handler(client, message) -> None:
     if not message.text or not message.reply_to_message:
         return
-    if message.chat.id != client.me.id:
-        return
     config, config_path = load_config(client.me.id)
     prompt_id = config.get("auto_backup_prompt_msg_id")
     if not prompt_id or message.reply_to_message.id != prompt_id:
         return
+    prompt_bot_id = config.get("auto_backup_prompt_bot_id")
+    if prompt_bot_id and message.reply_to_message.from_user:
+        if message.reply_to_message.from_user.id != prompt_bot_id:
+            return
 
     raw = message.text.strip().lower()
+    inline_cfg = bot_api.ensure_inline_identity() or load_inline_config()
+    token = inline_cfg.get("token")
+    owner_id = inline_cfg.get("owner_id")
     if raw in {"off", "нет", "no", "0", "disable"}:
         config["auto_backup_disabled"] = True
         config.pop("auto_backup_hours", None)
         config.pop("auto_backup_next_ts", None)
         config.pop("auto_backup_prompt_msg_id", None)
         save_config(config_path, config)
-        await client.send_message("me", "<b>Автобекапы отключены.</b>", parse_mode=ParseMode.HTML)
+        if token and owner_id:
+            await bot_api.send_bot_message(token, owner_id, "<b>Автобекапы отключены.</b>")
         return
 
     try:
         hours = int(raw)
     except ValueError:
-        await client.send_message(
-            "me",
-            "<b>Неверное значение.</b>\n<blockquote>Введите число часов, например <code>2</code>.</blockquote>",
-            parse_mode=ParseMode.HTML,
-        )
+        if token and owner_id:
+            await bot_api.send_bot_message(
+                token,
+                owner_id,
+                "<b>Неверное значение.</b>\n<blockquote>Введите число часов, например <code>2</code>.</blockquote>",
+            )
         return
 
     if hours <= 0:
-        await client.send_message(
-            "me",
-            "<b>Неверное значение.</b>\n<blockquote>Часы должны быть больше нуля.</blockquote>",
-            parse_mode=ParseMode.HTML,
-        )
+        if token and owner_id:
+            await bot_api.send_bot_message(
+                token,
+                owner_id,
+                "<b>Неверное значение.</b>\n<blockquote>Часы должны быть больше нуля.</blockquote>",
+            )
         return
 
     config["auto_backup_hours"] = hours
@@ -575,11 +640,12 @@ async def auto_backup_reply_handler(client, message) -> None:
     config.pop("auto_backup_prompt_msg_id", None)
     config.pop("auto_backup_disabled", None)
     save_config(config_path, config)
-    await client.send_message(
-        "me",
-        f"<b>Автобекапы включены.</b>\n<blockquote>Интервал: <code>{hours}h</code></blockquote>",
-        parse_mode=ParseMode.HTML,
-    )
+    if token and owner_id:
+        await bot_api.send_bot_message(
+            token,
+            owner_id,
+            f"<b>Автобекапы включены.</b>\n<blockquote>Интервал: <code>{hours}h</code></blockquote>",
+        )
 
 
 async def run_auto_backup(client, config: Dict[str, Any], config_path: str) -> None:
@@ -595,22 +661,27 @@ async def run_auto_backup(client, config: Dict[str, Any], config_path: str) -> N
         return
 
     caption = backup_module.build_backup_caption(backup_path, files, title="Auto backup")
-    chat_id = config.get("log_group_id") or "me"
+    inline_cfg = bot_api.ensure_inline_identity() or load_inline_config()
+    token = inline_cfg.get("token")
+    chat_id = config.get("log_group_id")
     thread_id = config.get("log_topic_backups_id")
-    try:
-        await client.send_document(
-            chat_id,
-            document=backup_path,
-            caption=caption,
-            parse_mode=ParseMode.HTML,
-            message_thread_id=thread_id,
+    if not token or not chat_id:
+        await send_log_message(
+            client,
+            config,
+            "<b>Auto backup:</b> <code>inline bot is not configured</code>",
+            topic="logs",
         )
-    except Exception:
-        await client.send_document(
-            chat_id,
-            document=backup_path,
-            caption=caption,
-            parse_mode=ParseMode.HTML,
+        return
+    data = await bot_api.send_bot_document(
+        token, chat_id, backup_path, caption=caption, thread_id=thread_id
+    )
+    if not data.get("ok"):
+        await send_log_message(
+            client,
+            config,
+            f"<b>Auto backup failed:</b> <code>{_escape(str(data))}</code>",
+            topic="logs",
         )
 
 
@@ -949,6 +1020,7 @@ async def main():
 
     inline_cfg = await ensure_inline_bot(client)
     if inline_cfg:
+        await ensure_inline_bot_member(client, config)
         client.inline_bot_thread = start_inline_bot_thread(INLINE_CONFIG_PATH)
 
     await maybe_prompt_auto_backup(client, config, config_path)

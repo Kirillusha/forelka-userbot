@@ -1,5 +1,6 @@
 import os
 import json
+import bot_api
 from pyrogram.enums import ParseMode
 
 
@@ -23,26 +24,32 @@ async def log_cmd(client, message, args):
     config = _load_config(client)
     chat_id = config.get("log_group_id") or "me"
     thread_id = config.get("log_topic_logs_id")
-    try:
-        await client.send_document(
-            chat_id,
-            log_file,
-            caption="<emoji id=5897962422169243693>👻</emoji> <b>Forelka Logs</b>",
-            message_thread_id=thread_id,
+    inline_cfg = bot_api.ensure_inline_identity() or bot_api.load_inline_config()
+    token = inline_cfg.get("token")
+    if not token or not config.get("log_group_id"):
+        return await message.edit(
+            "<blockquote><emoji id=5778527486270770928>❌</emoji> "
+            "<b>Inline bot not configured for log group</b></blockquote>",
             parse_mode=ParseMode.HTML,
         )
-    except Exception:
-        await client.send_document(
-            chat_id,
-            log_file,
-            caption="<emoji id=5897962422169243693>👻</emoji> <b>Forelka Logs</b>",
-            parse_mode=ParseMode.HTML,
-        )
-    destination = "Log group" if config.get("log_group_id") else "Saved Messages"
-    await message.edit(
-        f"<blockquote><emoji id=5776375003280838798>✅</emoji> <b>Logs sent to {destination}</b></blockquote>",
-        parse_mode=ParseMode.HTML,
+    data = await bot_api.send_bot_document(
+        token,
+        chat_id,
+        log_file,
+        caption="<emoji id=5897962422169243693>👻</emoji> <b>Forelka Logs</b>",
+        thread_id=thread_id,
     )
+    if data.get("ok"):
+        await message.edit(
+            "<blockquote><emoji id=5776375003280838798>✅</emoji> <b>Logs sent</b></blockquote>",
+            parse_mode=ParseMode.HTML,
+        )
+    else:
+        await message.edit(
+            f"<blockquote><emoji id=5778527486270770928>❌</emoji> "
+            f"<b>Inline bot send failed:</b> <code>{data}</code></blockquote>",
+            parse_mode=ParseMode.HTML,
+        )
 
 def register(app, commands, module_name):
     commands["log"] = {"func": log_cmd, "module": module_name}

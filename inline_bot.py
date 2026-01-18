@@ -2,7 +2,7 @@ import asyncio
 import json
 import os
 import time
-from typing import Any, Dict, List, Optional, Set, Tuple
+from typing import Any, Dict, List, Optional, Set
 
 from aiogram import Bot, Dispatcher
 from aiogram.enums import ParseMode
@@ -11,9 +11,6 @@ from aiogram.types import (
     CallbackQuery,
     InlineKeyboardButton,
     InlineKeyboardMarkup,
-    InlineQuery,
-    InlineQueryResultArticle,
-    InputTextMessageContent,
     Message,
 )
 
@@ -24,7 +21,6 @@ DEFAULT_HELP_FILE = "inline_help.json"
 
 RUNTIME_CACHE_TTL = 2
 HELP_CACHE_TTL = 6
-INLINE_CACHE_TTL = 20
 
 
 class JsonCache:
@@ -76,27 +72,6 @@ def _read_log_lines(path: str, num_lines: int = 20) -> str:
         return "Не удалось прочитать лог."
 
 
-def _search_logs(path: str, keyword: str, max_results: int = 10) -> str:
-    if not os.path.exists(path):
-        return "Лог-файл отсутствует."
-    keyword = keyword.lower().strip()
-    if not keyword:
-        return "Введите ключевое слово для поиска."
-    found: List[str] = []
-    try:
-        with open(path, "r", encoding="utf-8") as f:
-            for line in f:
-                if keyword in line.lower():
-                    found.append(line.strip())
-                    if len(found) >= max_results:
-                        break
-    except Exception:
-        return "Не удалось выполнить поиск в логе."
-    if not found:
-        return f"По запросу '{keyword}' ничего не найдено."
-    return "\n".join(found)
-
-
 def _load_config(path: str) -> Dict[str, Any]:
     if not os.path.exists(path):
         raise FileNotFoundError("Inline bot config not found")
@@ -122,25 +97,6 @@ def _build_home_keyboard() -> InlineKeyboardMarkup:
                 InlineKeyboardButton(text="🧾 Логи", callback_data="nav:logs"),
             ],
             [InlineKeyboardButton(text="🧰 Автобекапы", callback_data="nav:autobackup")],
-        ]
-    )
-
-
-def _build_inline_keyboard() -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup(
-        inline_keyboard=[
-            [
-                InlineKeyboardButton(
-                    text="🧾 Последние строки", switch_inline_query_current_chat=""
-                ),
-                InlineKeyboardButton(
-                    text="🔍 Поиск", switch_inline_query_current_chat="search "
-                ),
-            ],
-            [
-                InlineKeyboardButton(text="📊 Статус", switch_inline_query_current_chat="status"),
-                InlineKeyboardButton(text="📚 Помощь", switch_inline_query_current_chat="help"),
-            ],
         ]
     )
 
@@ -281,7 +237,6 @@ async def _run_bot(config_path: str) -> None:
     help_cache = JsonCache(cfg.get("help_file", DEFAULT_HELP_FILE), HELP_CACHE_TTL)
     user_config_path = f"config-{owner_id}.json"
     pending_custom: Set[int] = set()
-    inline_cache: Dict[str, Tuple[float, List[InlineQueryResultArticle]]] = {}
 
     bot = Bot(cfg["token"], parse_mode=ParseMode.HTML)
     dp = Dispatcher()
@@ -340,6 +295,17 @@ async def _run_bot(config_path: str) -> None:
         if not message.from_user or not _is_owner(message.from_user.id):
             return
         await message.answer(_build_status_text(_runtime()))
+
+    @dp.message(Command("logs"))
+    async def handle_logs(message: Message):
+        if not message.from_user or not _is_owner(message.from_user.id):
+            return
+        text = _read_log_lines(log_path, 30)
+        await message.answer(
+            "<b>Логи (последние 30 строк)</b>\n<blockquote expandable><code>{}</code></blockquote>".format(
+                text or "Нет данных"
+            )
+        )
 
     @dp.message(Command("help"))
     async def handle_help(message: Message):
@@ -492,89 +458,6 @@ async def _run_bot(config_path: str) -> None:
             await query.answer()
             return
         await query.answer()
-
-    @dp.inline_query()
-    async def inline_query_handler(inline_query: InlineQuery):
-        if not inline_query.from_user or not _is_owner(inline_query.from_user.id):
-            await inline_query.answer([], cache_time=1)
-            return
-        query = (inline_query.query or "").strip()
-        cached = inline_cache.get(query)
-        if cached and (time.time() - cached[0]) < INLINE_CACHE_TTL:
-            await inline_query.answer(cached[1], cache_time=1)
-            return
-
-        results: List[InlineQueryResultArticle] = []
-        if query == "":
-            text = _read_log_lines(log_path, 20)
-            results.append(
-                InlineQueryResultArticle(
-                    id="last_logs",
-                    title="Последние 20 строк",
-                    input_message_content=InputTextMessageContent(message_text=text),
-                    description="Показать последние строки лога",
-                    reply_markup=_build_inline_keyboard(),
-                )
-            )
-        elif query.lower() == "status":
-            text = _build_status_text(_runtime())
-            results.append(
-                InlineQueryResultArticle(
-                    id="status",
-                    title="Статус юзербота",
-                    input_message_content=InputTextMessageContent(
-                        message_text=text, parse_mode=ParseMode.HTML
-                    ),
-                    description="Проверить аптайм и обновление",
-                    reply_markup=_build_inline_keyboard(),
-                )
-            )
-        elif query.lower() == "help":
-            pages = _get_help_pages()
-            text = _build_help_text(pages, 0)
-            results.append(
-                InlineQueryResultArticle(
-                    id="help",
-                    title="Помощь",
-                    input_message_content=InputTextMessageContent(
-                        message_text=text, parse_mode=ParseMode.HTML
-                    ),
-                    description="Показать справку",
-                    reply_markup=_build_inline_keyboard(),
-                )
-            )
-        elif query.lower().startswith("search "):
-            keyword = query[7:].strip()
-            text = _search_logs(log_path, keyword, max_results=15)
-            results.append(
-                InlineQueryResultArticle(
-                    id="search",
-                    title=f"Поиск: {keyword}" if keyword else "Поиск по логам",
-                    input_message_content=InputTextMessageContent(message_text=text),
-                    description="Найти строку в логе",
-                    reply_markup=_build_inline_keyboard(),
-                )
-            )
-        else:
-            text = (
-                "Инлайн команды:\n"
-                "- пустой запрос: последние строки\n"
-                "- status: статус юзербота\n"
-                "- help: справка\n"
-                "- search <слово>: поиск по логу"
-            )
-            results.append(
-                InlineQueryResultArticle(
-                    id="usage",
-                    title="Помощь по инлайну",
-                    input_message_content=InputTextMessageContent(message_text=text),
-                    description="Список команд",
-                    reply_markup=_build_inline_keyboard(),
-                )
-            )
-
-        inline_cache[query] = (time.time(), results)
-        await inline_query.answer(results, cache_time=1)
 
     await dp.start_polling(bot)
 

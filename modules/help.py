@@ -2,11 +2,14 @@ import html
 import json
 import os
 import sys
+from typing import List
 from pyrogram.enums import ParseMode
 
+import bot_api
 from meta_lib import extract_command_descriptions, read_module_meta
 
 LIST_ALIASES = {"list", "all", "ls"}
+HELP_CACHE_PATH = "inline_help.json"
 
 def _escape(value):
     return html.escape(str(value)) if value is not None else ""
@@ -37,6 +40,56 @@ def _first_line(text):
     if not text:
         return ""
     return str(text).strip().splitlines()[0].strip()
+
+
+def _load_help_pages() -> List[str]:
+    if not os.path.exists(HELP_CACHE_PATH):
+        return []
+    try:
+        with open(HELP_CACHE_PATH, "r", encoding="utf-8") as f:
+            data = json.load(f) or {}
+        pages = data.get("pages") or []
+        return [str(p) for p in pages if p]
+    except Exception:
+        return []
+
+
+def _build_help_text(pages: List[str], page: int) -> str:
+    if not pages:
+        return "<b>Помощь</b>\n<blockquote>Данные помощи ещё не сгенерированы.</blockquote>"
+    page = max(0, min(page, len(pages) - 1))
+    header = f"<b>Помощь</b>\n<blockquote>Страница {page + 1} из {len(pages)}</blockquote>\n\n"
+    return header + pages[page]
+
+
+def _build_help_keyboard(page: int, total_pages: int) -> dict:
+    rows = []
+    if total_pages > 1:
+        nav_row = []
+        if page > 0:
+            nav_row.append({"text": "⬅️ Назад", "callback_data": f"help:page:{page - 1}"})
+        nav_row.append({"text": f"{page + 1}/{total_pages}", "callback_data": "noop"})
+        if page < total_pages - 1:
+            nav_row.append({"text": "➡️ Далее", "callback_data": f"help:page:{page + 1}"})
+        rows.append(nav_row)
+    rows.append([{"text": "✖️ Закрыть", "callback_data": "help:close"}])
+    return {"inline_keyboard": rows}
+
+
+async def _ensure_inline_bot_in_chat(client, chat_id: int, username: str, bot_id: int | None) -> bool:
+    if chat_id > 0:
+        return True
+    if bot_id:
+        try:
+            await client.get_chat_member(chat_id, bot_id)
+            return True
+        except Exception:
+            pass
+    try:
+        await client.add_chat_members(chat_id, f"@{username}")
+        return True
+    except Exception:
+        return False
 
 def _command_descriptions(client, module_name, commands):
     module = sys.modules.get(module_name)
@@ -136,6 +189,38 @@ async def help_cmd(client, message, args):
         meta = read_module_meta(module, module_name, module_cmds.get(module_name))
         detail = _render_module_detail(client, module_name, module, meta, pref)
         return await message.edit(detail, parse_mode=ParseMode.HTML)
+
+    inline_cfg = bot_api.ensure_inline_identity() or bot_api.load_inline_config()
+    token = inline_cfg.get("token")
+    owner_id = inline_cfg.get("owner_id")
+    username = inline_cfg.get("username")
+    bot_id = inline_cfg.get("id")
+    if token and owner_id and username:
+        pages = _load_help_pages()
+        text = _build_help_text(pages, 0)
+        markup = _build_help_keyboard(0, len(pages))
+        thread_id = getattr(message, "message_thread_id", None)
+        allowed = await _ensure_inline_bot_in_chat(client, message.chat.id, username, bot_id)
+        if allowed:
+            data = await bot_api.send_bot_message(
+                token,
+                message.chat.id,
+                text,
+                reply_markup=markup,
+                thread_id=thread_id,
+            )
+            if data.get("ok"):
+                try:
+                    await message.delete()
+                except Exception:
+                    pass
+                return
+        await message.edit(
+            "<blockquote><emoji id=5778527486270770928>❌</emoji> "
+            "<b>Inline бот не может отправить help. Добавьте бота в чат.</b></blockquote>",
+            parse_mode=ParseMode.HTML,
+        )
+        return
 
     sys_mods, ext_mods = {}, {}
 

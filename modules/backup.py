@@ -5,6 +5,8 @@ import json
 from datetime import datetime
 from pyrogram.enums import ParseMode
 
+import bot_api
+
 BACKUP_DIR = "backups"
 
 
@@ -121,19 +123,28 @@ async def backup_cmd(client, message, args):
         thread_id = config.get("log_topic_backups_id")
 
         await message.delete()
-        try:
-            await client.send_document(
-                chat_id=chat_id,
-                document=backup_path,
+        inline_cfg = bot_api.ensure_inline_identity() or bot_api.load_inline_config()
+        token = inline_cfg.get("token")
+        if token and config.get("log_group_id"):
+            data = await bot_api.send_bot_document(
+                token,
+                chat_id,
+                backup_path,
                 caption=caption,
-                parse_mode=ParseMode.HTML,
-                message_thread_id=thread_id,
+                thread_id=thread_id,
             )
-        except Exception:
-            await client.send_document(
-                chat_id=chat_id,
-                document=backup_path,
-                caption=caption,
+            if not data.get("ok"):
+                await client.send_message(
+                    message.chat.id,
+                    f"<blockquote><emoji id=5778527486270770928>❌</emoji> "
+                    f"<b>Inline bot send failed:</b> <code>{data}</code></blockquote>",
+                    parse_mode=ParseMode.HTML,
+                )
+        else:
+            await client.send_message(
+                message.chat.id,
+                "<blockquote><emoji id=5778527486270770928>❌</emoji> "
+                "<b>Inline bot not configured for log group</b></blockquote>",
                 parse_mode=ParseMode.HTML,
             )
         
