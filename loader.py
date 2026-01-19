@@ -228,3 +228,4 @@ def load_all(app):
         for f in sorted(os.listdir(d)):
             if f.endswith(".py") and not f.startswith("_"):
                 load_module(app, f[:-3], d)
+                
